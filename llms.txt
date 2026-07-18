@@ -1,0 +1,254 @@
+# @zakkster/lite-media
+
+> Reactive media & preference signals built on @zakkster/lite-signal.
+> Wraps window.matchMedia in Signal<boolean>; page-lifetime memoization by
+> exact query string; zero-GC steady state; honest scope (module-global,
+> not per-request). One runtime dep: @zakkster/lite-signal. ESM-only. MIT.
+> v1.0.0 ships Engine A (viewport & preferences).
+
+## Design in one line
+
+JS never evaluates a query. The browser evaluates via matchMedia; lite-media
+observes the verdict and pushes a boolean into the lite-signal graph.
+
+Consequences:
+- Correctness for free: range syntax, em resolved against font-size, dvh,
+  future media features — the browser handles them. No JS parser to maintain.
+- Zero-GC steady state: a change event runs one hoisted handler that does one
+  sig.set(e.matches). lite-signal's Object.is equality drops redundant events.
+  No timers, no debounce, no schedulers.
+
+## Scope note
+
+The memoization cache is module-global — one signal per unique query string,
+shared across the process. Right for a page or a Twitch overlay. Wrong for a
+request-per-render server: ssrDefault is a process-wide constant, per-request
+values are not supported in v1.0.0. A createMedia() factory for scoped
+instances is on the v1.1.0 roadmap if consumer demand shows up.
+
+## Rejected alternative (documented for the roadmap ledger)
+
+Regex-parsing queries in JS and evaluating them against clientWidth was
+considered and rejected. Failures: cannot stay correct with the CSS spec;
+misses decimals and range syntax; measures the wrong box (padding vs content);
+setTimeout debouncing adds allocation + latency where ResizeObserver already
+frame-coalesces. The correct mechanism is the browser's matchMedia (engine A,
+v1.0.0) and — for containers — an injected @container rule + transitionrun on
+a zero-size sentinel (engine B, v1.1.0). See ROADMAP for the container spec.
+
+## Public API (v1.0.0)
+
+    import { signal, effect } from "@zakkster/lite-signal";
+    import {
+        media, configure, stats,
+        reducedMotion, darkScheme, hoverCapable, coarsePointer,
+        forcedColors, moreContrast, reducedData, reducedTransparency,
+    } from "@zakkster/lite-media";
+
+### media(query: string): MediaSignal
+
+Memoized reactive boolean for a CSS media query. Same query string ⇒ same
+signal instance. Signal has (): boolean tracked read, .peek(): boolean
+untracked read, .subscribe(fn): dispose. .set / .update are hidden by the
+TypeScript declaration (they exist at runtime — see Read-only note below).
+
+Throws Error if no matchMedia is available and no ssrDefault was configured.
+Throws TypeError if a configured factory returns a non-MQL-shaped object.
+
+Failed materialization does NOT engage the lock. The caller can configure()
+and retry.
+
+### configure(options): void
+
+Test / SSR seam. Must be called before the first SUCCESSFUL media() call.
+
+    options.matchMedia — (query: string) => MediaQueryList-shaped
+                         Must be a function; non-function throws TypeError.
+                         Falls through to globalThis.matchMedia when unset.
+    options.ssrDefault — boolean returned when no matchMedia is resolvable.
+                         Non-boolean (including undefined) is a no-op — does
+                         NOT un-set a previously configured default.
+
+Silently ignores null, undefined, non-object input. Multiple pre-lock calls
+compose (later valid keys override earlier ones). Reconfiguration after a
+successful materialization throws Error.
+
+### Preference shortcuts
+
+Each is () => MediaSignal, delegating to media() with a fixed query string.
+Hoist once per component, read call-style:
+
+    const rm = reducedMotion();
+    effect(() => { if (!rm()) startAnimation(); });
+
+    reducedMotion       — (prefers-reduced-motion: reduce)
+    darkScheme          — (prefers-color-scheme: dark)
+    hoverCapable        — (hover: hover)
+    coarsePointer       — (pointer: coarse)
+    forcedColors        — (forced-colors: active)
+    moreContrast        — (prefers-contrast: more)
+    reducedData         — (prefers-reduced-data: reduce)
+    reducedTransparency — (prefers-reduced-transparency: reduce)
+
+Function form (not module-level pre-created signals) is deliberate: creating
+signals at import time would require globalThis.matchMedia at module load,
+which breaks SSR-honest defaults. The hoist step costs one line and buys
+clean off-DOM semantics.
+
+Deferred to later releases: standaloneDisplay (PWA display-mode; belongs in
+a PWA-shell package) and highDynamicRange (dynamic-range; naturally owned by
+lite-color-engine / lite-hueforge).
+
+### stats(): Stats
+
+Cheap allocation-light snapshot for demos, perf overlays, and test asserts.
+
+    watched     — number of memoized signals in the cache
+    configured  — whether configure() explicitly set matchMedia or ssrDefault
+                  (does NOT count fallback to native globalThis.matchMedia)
+    locked      — whether a successful materialization has happened
+
+### __resetForTests(): void
+
+@internal — test-only escape hatch. NOT part of the semver contract. Clears
+the cache, configured factory, ssrDefault, lock, AND the cached bound native
+matchMedia in one call.
+
+## Types
+
+    interface MediaSignal {
+        (): boolean;                                       // tracked read
+        peek(): boolean;                                   // untracked read
+        subscribe(fn: (v: boolean) => void): () => void;   // dispose
+    }
+
+    interface ConfigureOptions {
+        matchMedia?: (query: string) => MockMediaQueryList;
+        ssrDefault?: boolean;
+    }
+
+    interface MockMediaQueryList {
+        matches: boolean;
+        addEventListener(
+            type: "change",
+            handler: (event: { matches: boolean }) => void
+        ): void;
+    }
+
+    interface Stats { watched: number; configured: boolean; locked: boolean; }
+
+## Read-only by convention
+
+MediaSignal in the .d.ts hides .set / .update. At runtime the returned object
+is still a lite-signal Signal, so a JS consumer or a TS cast can write to it.
+Doing so permanently desyncs the shared signal from the browser until the
+next real `change` event. If you need write access, wrap in a computed() you
+own instead of writing through the shared signal.
+
+## Memoization contract
+
+media() memoizes by exact string match, for the lifetime of the module (no
+eviction, no dispose). Query strings MUST come from a bounded static set —
+interned literals, module-level constants, or a finite table of known
+breakpoints. Building queries from unbounded input leaks signals AND live
+change listeners:
+
+    // WRONG — leaks per unique width
+    for (let w = 300; w < 1300; w++) media(`(max-width: ${w}px)`);
+
+Bucket via Math.floor to a fixed step, or drop out of memoization for one-offs.
+
+## Allocation profile
+
+    Op                                   | Allocations
+    ------------------------------------ | ---------------------------------
+    media(query) cache hit               | 0 hot-path (Map lookup)
+    media(query) cache miss (mock)       | 1 signal + 1 handler + 1 MQL
+    media(query) cache miss (native, 1st)| 1 signal + 1 handler + 1 MQL + 1 bound-native fn
+    media(query) cache miss (native, ≥2) | 1 signal + 1 handler + 1 MQL (bind cached)
+    Signal read (s())                    | 0
+    change event → sig.set               | 0
+    Redundant event (same value)         | 0 (Object.is dedup in lite-signal)
+    Preference shortcut call             | 0 (delegates to media() cache)
+
+The bound globalThis.matchMedia is allocated once per process. Cost scales
+with verdict flips, not with browser events.
+
+## When to use / not use
+
+USE for:
+- Twitch overlays and embedded widgets where every ms matters.
+- Any consumer that would otherwise wire its own matchMedia listener per
+  component (memoization is the point).
+- Preference-gated code paths (reduced-motion, forced-colors, dark scheme).
+- Test suites that need honest boolean semantics via a mock.
+
+DO NOT USE for:
+- Container-relative queries in v1.0.0 (media() will accept them but the
+  browser can't resolve cqw/cqi against the document, so signals stay false).
+  containerMedia() ships in v1.1.0 — see ROADMAP.
+- Style queries via style(--var: value) in v1.0.0 (same reason).
+- Pure feature detection (matchMedia is the wrong tool; use @supports).
+- Per-request SSR with request-specific defaults — module-global memoization
+  means the first request wins for the whole process. Emit a pessimistic
+  default and hydrate on the client.
+- Unbounded/dynamic query strings (see Memoization contract).
+
+## SSR / testing
+
+Server-side or Node: two options.
+
+1) Configure a process-wide default (constant across all requests):
+
+    configure({ ssrDefault: false });
+    const s = media("(any)");   // returns false without a browser
+
+2) Provide a mock factory:
+
+    configure({
+        matchMedia: (query) => ({
+            matches: false,
+            addEventListener() { /* no-op or wire to a test dispatcher */ },
+        }),
+    });
+
+Tests should call __resetForTests() in beforeEach to clear the module-global
+state. Node's --test runs each file in its own subprocess by default, so
+cross-file isolation is free; within-file isolation is one line.
+
+## Roadmap
+
+- 1.0.0 — Engine A (this release): media(), 8 preferences, configure, stats.
+- 1.1.0 — Engine B: containerMedia(el, query) via injected @container rules +
+          transitionrun on a zero-size sentinel with a registered
+          <custom-ident> property. Native verdicts (range syntax, cqw,
+          style()) — zero JS query parsing. Also under consideration:
+          createMedia({ matchMedia, ssrDefault }) factory for scoped
+          instances (unblocks per-request SSR).
+- 1.2.0 — breakpoints({ sm, md, lg }) interned-token computed; reconsider
+          standaloneDisplay / highDynamicRange based on consumer demand.
+- 1.3.0 — Shadow DOM multi-root support for engine B; iframe / Twitch
+          panel-mode verification pass.
+- 1.4.0 — Ecosystem wiring: lite-ambient-fx & lite-scratch-fx consume
+          reducedMotion via watchEffect + onCleanup rAF gate; lite-hueforge
+          pairs moreContrast / forcedColors with APCA role-floor selection.
+
+Watchlist: CSSWG #6205 (native Element.matchContainer). If it ships, engine B
+collapses to a feature-detected bridge — signal-graph surface unchanged.
+
+## File layout
+
+    Media.js       — single-file ESM implementation
+    Media.d.ts     — TypeScript declarations (MediaSignal narrows Signal<boolean>)
+    test/01-media.test.mjs      — memoization, updates, preferences (node:test)
+    test/02-configure.test.mjs  — mock seam, SSR default, lock semantics, validation
+    test/03-zero-gc.test.mjs    — heap-delta guard (--expose-gc), timer-count guard
+    README.md, llms.txt, LICENSE.txt, CHANGELOG.md
+
+## Install
+
+    npm install @zakkster/lite-media @zakkster/lite-signal
+
+## License
+
+MIT © Zahary Shinikchiev

@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@zakkster/lite-media — oscilloscope</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "@zakkster/lite-signal": "https://esm.sh/@zakkster/lite-signal@1",
+                "@zakkster/lite-media": "../Media.js"
+            }
+        }
+    </script>
+    <style>
+        /* Per-property hex-first / oklch-second declaration. If oklch isn't
+           supported, the second declaration is invalid and the browser falls
+           back to the first — no @supports block needed. */
+        :root {
+            --bg:        #061510;
+            --bg:        oklch(0.15 0.03 165);
+            --bg-2:      #0a2019;
+            --bg-2:      oklch(0.20 0.04 165);
+            --grid:      #123324;
+            --grid:      oklch(0.27 0.05 160);
+            --fg-dim:    #3a8a63;
+            --fg-dim:    oklch(0.55 0.14 155);
+            --fg:        #57c58c;
+            --fg:        oklch(0.75 0.19 155);
+            --fg-hot:    #a6ffce;
+            --fg-hot:    oklch(0.93 0.17 150);
+            --warn:      #ffb14a;
+            --warn:      oklch(0.80 0.17 70);
+            --off:       #244a38;
+            --off:       oklch(0.35 0.07 160);
+            --mono: ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: var(--mono);
+            font-size: 0.875rem;
+            line-height: 1.5;
+            background-image:
+                repeating-linear-gradient(0deg,  transparent 0 1.5rem, var(--grid) 1.5rem 1.5rem),
+                repeating-linear-gradient(90deg, transparent 0 1.5rem, var(--grid) 1.5rem 1.5rem);
+            background-size: 1.5rem 1.5rem;
+        }
+
+        header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--grid);
+            background: var(--bg-2);
+            display: flex;
+            align-items: baseline;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            color: var(--fg-hot);
+        }
+        header .sub {
+            color: var(--fg-dim);
+            font-size: 0.8125rem;
+        }
+
+        #tabs {
+            display: flex;
+            gap: 0.25rem;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--grid);
+            background: var(--bg-2);
+            overflow-x: auto;
+        }
+        #tabs button {
+            background: transparent;
+            color: var(--fg-dim);
+            border: 1px solid var(--grid);
+            padding: 0.375rem 0.75rem;
+            font-family: inherit;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+        }
+        #tabs button.active {
+            color: var(--fg-hot);
+            border-color: var(--fg);
+            background: var(--bg);
+        }
+        @media (hover: hover) {
+            #tabs button:not(.active):hover {
+                color: var(--fg);
+                border-color: var(--fg-dim);
+            }
+        }
+
+        main { padding: 1rem 1.25rem 2rem; }
+        .scene { display: none; }
+        .scene.active { display: block; }
+
+        .grid {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: 1fr;
+        }
+        @media (min-width: 60rem) {
+            .grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        .panel {
+            background: var(--bg-2);
+            border: 1px solid var(--grid);
+            padding: 1rem;
+        }
+        .panel h2 {
+            margin: 0 0 0.75rem;
+            font-size: 0.8125rem;
+            letter-spacing: 0.1em;
+            color: var(--fg-dim);
+            text-transform: uppercase;
+        }
+
+        /* --- utility classes (replace inline style=) --- */
+        .mt   { margin-top: 1rem; }
+        .dim  { color: var(--fg-dim); font-size: 0.8125rem; }
+        .dim.tiny { font-size: 0.75rem; }
+        .row  { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .input-narrow { max-width: 12rem; }
+
+        /* --- S1 prefs --- */
+        .prefs {
+            display: grid;
+            gap: 0.5rem;
+            grid-template-columns: 1fr 1fr;
+        }
+        .pref {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.375rem 0.5rem;
+            border: 1px solid var(--grid);
+            background: var(--bg);
+            font-size: 0.8125rem;
+        }
+        .pref .dot {
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 50%;
+            background: var(--off);
+            box-shadow: 0 0 0 1px var(--grid) inset;
+            flex: 0 0 auto;
+        }
+        .pref.on .dot {
+            background: var(--fg-hot);
+            box-shadow: 0 0 0.5rem var(--fg), 0 0 0 1px var(--fg-hot) inset;
+        }
+        .pref .name { color: var(--fg); }
+        .pref.on .name { color: var(--fg-hot); }
+
+        .controls {
+            display: grid;
+            gap: 0.375rem;
+            grid-template-columns: 1fr;
+        }
+        .toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.375rem 0.5rem;
+            border: 1px solid var(--grid);
+            background: var(--bg);
+            font-size: 0.8125rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .toggle .kbd {
+            font-size: 0.75rem;
+            color: var(--fg-dim);
+            border: 1px solid var(--grid);
+            padding: 0 0.375rem;
+        }
+        .toggle.on { color: var(--fg-hot); border-color: var(--fg); }
+
+        .log {
+            background: var(--bg);
+            border: 1px solid var(--grid);
+            padding: 0.5rem;
+            height: 12rem;
+            overflow: auto;
+            font-size: 0.75rem;
+            line-height: 1.4;
+        }
+        .log .line { color: var(--fg-dim); }
+        .log .line.fresh { color: var(--fg-hot); }
+
+        /* --- S2 grid + cells --- */
+        .s2-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 3px;
+            margin-top: 1rem;
+        }
+        .s2-cell {
+            height: 2rem;
+            border: 1px solid var(--grid);
+            background: var(--bg);
+        }
+        .s2-cell.on { background: var(--fg-hot); }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.25rem 0;
+            border-bottom: 1px dashed var(--grid);
+            font-size: 0.8125rem;
+        }
+        .stat:last-child { border-bottom: none; }
+        .stat .k { color: var(--fg-dim); }
+        .stat .v { color: var(--fg-hot); font-variant-numeric: tabular-nums; }
+
+        input[type="text"], input[type="number"] {
+            background: var(--bg);
+            border: 1px solid var(--grid);
+            color: var(--fg-hot);
+            padding: 0.5rem 0.75rem;
+            font-family: inherit;
+            font-size: 0.875rem;
+            width: 100%;
+        }
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: 1px solid var(--fg);
+            outline-offset: -1px;
+        }
+
+        button.big {
+            background: var(--bg);
+            border: 1px solid var(--fg);
+            color: var(--fg);
+            padding: 0.5rem 1rem;
+            font-family: inherit;
+            font-size: 0.875rem;
+            cursor: pointer;
+            letter-spacing: 0.06em;
+        }
+        button.big:disabled { opacity: 0.5; cursor: not-allowed; }
+        @media (hover: hover) {
+            button.big:not(:disabled):hover {
+                color: var(--fg-hot);
+                border-color: var(--fg-hot);
+            }
+        }
+
+        .verdict {
+            font-size: 1.75rem;
+            letter-spacing: 0.1em;
+            padding: 1.5rem 0;
+            text-align: center;
+            border: 1px solid var(--grid);
+            background: var(--bg);
+        }
+        .verdict.match   { color: var(--fg-hot); border-color: var(--fg); }
+        .verdict.nomatch { color: var(--fg-dim); }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>LITE-MEDIA</h1>
+        <span class="sub">reactive media &amp; preference signals · v1.0.0</span>
+    </header>
+
+    <nav id="tabs">
+        <button data-scene="s1" class="active">S1 · PREFERENCE MATRIX</button>
+        <button data-scene="s2">S2 · REGISTRY SCOPE</button>
+        <button data-scene="s3">S3 · QUERY TEST</button>
+        <button data-scene="s4">S4 · FLIP STORM</button>
+    </nav>
+
+    <main>
+        <!-- S1 · Preference matrix -->
+        <section id="s1" class="scene active">
+            <div class="grid">
+                <div class="panel">
+                    <h2>Preference nodes (subscribed via effect())</h2>
+                    <div id="s1-prefs" class="prefs">
+                        <div class="pref" data-key="rm"><span class="dot"></span><span class="name">reducedMotion</span></div>
+                        <div class="pref" data-key="ds"><span class="dot"></span><span class="name">darkScheme</span></div>
+                        <div class="pref" data-key="hc"><span class="dot"></span><span class="name">hoverCapable</span></div>
+                        <div class="pref" data-key="cp"><span class="dot"></span><span class="name">coarsePointer</span></div>
+                        <div class="pref" data-key="fc"><span class="dot"></span><span class="name">forcedColors</span></div>
+                        <div class="pref" data-key="mc"><span class="dot"></span><span class="name">moreContrast</span></div>
+                        <div class="pref" data-key="rd"><span class="dot"></span><span class="name">reducedData</span></div>
+                        <div class="pref" data-key="rt"><span class="dot"></span><span class="name">reducedTransparency</span></div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>Mock OS toggles (flip the underlying MQL)</h2>
+                    <div class="controls" id="s1-toggles">
+                        <div class="toggle" data-key="rm"><span>reducedMotion</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="ds"><span>darkScheme</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="hc"><span>hoverCapable</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="cp"><span>coarsePointer</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="fc"><span>forcedColors</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="mc"><span>moreContrast</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="rd"><span>reducedData</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="rt"><span>reducedTransparency</span><span class="kbd">CLICK</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel mt">
+                <h2>onChange log (last 20 flips)</h2>
+                <div id="s1-log" class="log"></div>
+            </div>
+        </section>
+
+        <!-- S2 · Registry scope -->
+        <section id="s2" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>50 subscribers to ONE media() signal</h2>
+                    <p class="dim">Every subscriber calls <code>media("(max-width: 40rem)")</code> — memoization means one MQL, one browser subscription, one flip fans out to all 50 effects.</p>
+                    <button class="big" id="s2-flip">FLIP MQL</button>
+                    <div id="s2-grid" class="s2-grid"></div>
+                </div>
+                <div class="panel">
+                    <h2>stats() &amp; run counters</h2>
+                    <div class="stat"><span class="k">watched</span><span class="v" id="s2-watched">–</span></div>
+                    <div class="stat"><span class="k">locked</span><span class="v" id="s2-locked">–</span></div>
+                    <div class="stat"><span class="k">subscribers</span><span class="v" id="s2-subs">–</span></div>
+                    <div class="stat"><span class="k">flips dispatched</span><span class="v" id="s2-flips">0</span></div>
+                    <div class="stat"><span class="k">total effect runs</span><span class="v" id="s2-runs">0</span></div>
+                    <div class="stat"><span class="k">MQL listeners registered</span><span class="v" id="s2-listeners">–</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- S3 · Query test -->
+        <section id="s3" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>Custom query — real window.matchMedia</h2>
+                    <p class="dim">Enter any valid media query. lite-media memoizes by string, so pasting the same query twice hits the cache.</p>
+                    <input type="text" id="s3-query" value="(max-width: 40rem)" spellcheck="false">
+                    <div id="s3-verdict" class="verdict nomatch mt">— NO MATCH —</div>
+                </div>
+                <div class="panel">
+                    <h2>Cache state</h2>
+                    <div class="stat"><span class="k">watched</span><span class="v" id="s3-watched">–</span></div>
+                    <div class="stat"><span class="k">this query previously seen</span><span class="v" id="s3-cached">–</span></div>
+                    <div class="stat"><span class="k">current viewport width</span><span class="v" id="s3-vw">–</span></div>
+                    <p class="dim tiny mt">Try resizing the window. Verdicts recompute in the browser; lite-media just observes.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- S4 · Flip storm -->
+        <section id="s4" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>Flip storm — dispatch N mock events</h2>
+                    <p class="dim">A mock MQL dispatches N alternating events. Object.is dedupe means the effect fires once per real flip, not once per event. Compare "events dispatched" vs "effect runs" — that's the zero-GC dedupe in action.</p>
+                    <div class="row">
+                        <input type="number" id="s4-n" value="10000" min="1" step="1000" class="input-narrow">
+                        <button class="big" id="s4-run">RUN STORM</button>
+                    </div>
+                    <div class="stat"><span class="k">events dispatched</span><span class="v" id="s4-events">0</span></div>
+                    <div class="stat"><span class="k">effect runs (dedupe-adjusted)</span><span class="v" id="s4-runs">0</span></div>
+                    <div class="stat"><span class="k">last storm — wall time</span><span class="v" id="s4-wall">–</span></div>
+                </div>
+                <div class="panel">
+                    <h2>Notes</h2>
+                    <p class="dim">Events alternate <code>true / true / true / false / false / false / true / …</code> — you'll see roughly N/3 effect runs for N events. If you switch to <code>Math.random() &lt; 0.5</code>, the ratio drops to ~50% (approximate flip rate). Both cases prove the same thing: <em>lite-media does nothing between real flips</em>.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script type="module">
+        import { effect } from "@zakkster/lite-signal";
+        import { configure, media, stats } from "@zakkster/lite-media";
+
+        // ----- constants precomputed at init -----
+        const S1_KEYS = ["rm", "ds", "hc", "cp", "fc", "mc", "rd", "rt"];
+        const S1_QUERY_BY_KEY = {
+            rm: "(prefers-reduced-motion: reduce)",
+            ds: "(prefers-color-scheme: dark)",
+            hc: "(hover: hover)",
+            cp: "(pointer: coarse)",
+            fc: "(forced-colors: active)",
+            mc: "(prefers-contrast: more)",
+            rd: "(prefers-reduced-data: reduce)",
+            rt: "(prefers-reduced-transparency: reduce)",
+        };
+        const S1_MAX_LOG = 20;
+        const S2_QUERY = "(max-width: 40rem)";
+        const S2_N = 50;
+        const S4_QUERY = "(demo: flip-storm)";
+
+        // ----- mock MQL registry with real-matchMedia fall-through -----
+        // The mock owns preference queries + fixed demo queries so S1/S2/S4
+        // are deterministic. Anything else (S3's user-entered query) hits
+        // the real globalThis.matchMedia.
+        const mockRegistry = new Map();
+        const $realMatchMedia = typeof globalThis.matchMedia === "function"
+            ? globalThis.matchMedia.bind(globalThis)
+            : null;
+
+        function ensureMock(q) {
+            let e = mockRegistry.get(q);
+            if (e === undefined) {
+                e = { matches: false, listeners: new Set() };
+                mockRegistry.set(q, e);
+            }
+            return e;
+        }
+        function mockFlip(q, m) {
+            const e = mockRegistry.get(q);
+            if (e === undefined) return;
+            e.matches = m;
+            for (const h of e.listeners) h({ matches: m });
+        }
+        function mockCount(q) {
+            const e = mockRegistry.get(q);
+            return e === undefined ? 0 : e.listeners.size;
+        }
+
+        function matchMediaMockOrReal(q) {
+            if (mockRegistry.has(q)) {
+                const e = mockRegistry.get(q);
+                return {
+                    get matches() { return e.matches; },
+                    addEventListener(type, h) { if (type === "change") e.listeners.add(h); },
+                    removeEventListener(type, h) { if (type === "change") e.listeners.delete(h); },
+                };
+            }
+            if ($realMatchMedia !== null) return $realMatchMedia(q);
+            return { matches: false, addEventListener() {}, removeEventListener() {} };
+        }
+
+        // Pre-seed all mock-owned queries so materialization sees them.
+        for (const k of S1_KEYS) ensureMock(S1_QUERY_BY_KEY[k]);
+        ensureMock(S2_QUERY);
+        ensureMock(S4_QUERY);
+
+        configure({ matchMedia: matchMediaMockOrReal });
+
+        // ----- cached DOM refs (blueprint convention) -----
+        const $tabs = document.getElementById("tabs");
+        const $tabButtons = $tabs.querySelectorAll("button");
+        const $scenes = document.querySelectorAll(".scene");
+
+        // S1
+        const $s1PrefEls = new Map();
+        for (const el of document.querySelectorAll("#s1-prefs .pref")) {
+            $s1PrefEls.set(el.dataset.key, el);
+        }
+        const $s1TogEls = new Map();
+        for (const el of document.querySelectorAll("#s1-toggles .toggle")) {
+            $s1TogEls.set(el.dataset.key, el);
+        }
+        const $s1Log = document.getElementById("s1-log");
+
+        // S2
+        const $s2Grid = document.getElementById("s2-grid");
+        const $s2Flip = document.getElementById("s2-flip");
+        const $s2Watched   = document.getElementById("s2-watched");
+        const $s2Locked    = document.getElementById("s2-locked");
+        const $s2Subs      = document.getElementById("s2-subs");
+        const $s2Flips     = document.getElementById("s2-flips");
+        const $s2Runs      = document.getElementById("s2-runs");
+        const $s2Listeners = document.getElementById("s2-listeners");
+
+        // S3
+        const $s3Query   = document.getElementById("s3-query");
+        const $s3Verdict = document.getElementById("s3-verdict");
+        const $s3Watched = document.getElementById("s3-watched");
+        const $s3Cached  = document.getElementById("s3-cached");
+        const $s3Vw      = document.getElementById("s3-vw");
+
+        // S4
+        const $s4N      = document.getElementById("s4-n");
+        const $s4Run    = document.getElementById("s4-run");
+        const $s4Events = document.getElementById("s4-events");
+        const $s4Runs   = document.getElementById("s4-runs");
+        const $s4Wall   = document.getElementById("s4-wall");
+
+        // ----- tab switching -----
+        $tabs.addEventListener("click", (ev) => {
+            const btn = ev.target.closest("button[data-scene]");
+            if (btn === null) return;
+            for (const b of $tabButtons) b.classList.toggle("active", b === btn);
+            for (const s of $scenes) s.classList.toggle("active", s.id === btn.dataset.scene);
+        });
+
+        // ============================================================
+        // S1 · Preference matrix
+        // ============================================================
+        const s1Sigs = new Map();
+        for (const k of S1_KEYS) s1Sigs.set(k, media(S1_QUERY_BY_KEY[k]));
+
+        for (const k of S1_KEYS) {
+            const sig = s1Sigs.get(k);
+            const $el = $s1PrefEls.get(k);
+            const $tog = $s1TogEls.get(k);
+            effect(() => {
+                const on = sig();
+                $el.classList.toggle("on", on);
+                $tog.classList.toggle("on", on);
+            });
+        }
+
+        for (const [k, $tog] of $s1TogEls) {
+            $tog.addEventListener("pointerdown", () => {
+                const q = S1_QUERY_BY_KEY[k];
+                const next = !mockRegistry.get(q).matches;
+                mockFlip(q, next);
+                s1LogAdd(`${k} → ${next ? "on" : "off"}`);
+            });
+        }
+
+        let s1LogSeq = 0;
+        function s1LogAdd(msg) {
+            const line = document.createElement("div");
+            line.className = "line fresh";
+            line.textContent = `#${(++s1LogSeq).toString().padStart(3, "0")}  ${msg}`;
+            $s1Log.prepend(line);
+            const kids = $s1Log.children;
+            for (let i = 1; i < kids.length; i++) kids[i].classList.remove("fresh");
+            while ($s1Log.childElementCount > S1_MAX_LOG) $s1Log.lastElementChild.remove();
+        }
+
+        // ============================================================
+        // S2 · Registry scope — 50 subscribers to one signal
+        // ============================================================
+        const s2Sig = media(S2_QUERY);
+        let s2TotalRuns = 0;
+        let s2FlipCount = 0;
+
+        for (let i = 0; i < S2_N; i++) {
+            const cell = document.createElement("div");
+            cell.className = "s2-cell";
+            $s2Grid.appendChild(cell);
+            effect(() => {
+                const on = s2Sig();
+                cell.classList.toggle("on", on);
+                s2TotalRuns = (s2TotalRuns + 1) | 0;
+            });
+        }
+
+        $s2Flip.addEventListener("pointerdown", () => {
+            const cur = mockRegistry.get(S2_QUERY).matches;
+            mockFlip(S2_QUERY, !cur);
+            s2FlipCount = (s2FlipCount + 1) | 0;
+        });
+
+        // Stats poll at ~10 Hz. This setInterval is DEMO code, not library.
+        // The library itself uses no timers on any path.
+        setInterval(() => {
+            const st = stats();
+            $s2Watched.textContent = st.watched;
+            $s2Locked.textContent = st.locked ? "true" : "false";
+            $s2Subs.textContent = S2_N;
+            $s2Flips.textContent = s2FlipCount;
+            $s2Runs.textContent = s2TotalRuns;
+            $s2Listeners.textContent = mockCount(S2_QUERY);
+        }, 100);
+
+        // ============================================================
+        // S3 · Query test — over real matchMedia
+        // ============================================================
+        let s3StopCurrent = () => {};
+        function s3Rebind() {
+            s3StopCurrent();
+            const q = $s3Query.value.trim();
+            if (q === "") {
+                $s3Verdict.className = "verdict nomatch mt";
+                $s3Verdict.textContent = "— empty —";
+                s3StopCurrent = () => {};
+                return;
+            }
+            const sig = media(q);
+            const cached = stats().watched;
+            $s3Cached.textContent = "listed";
+            s3StopCurrent = effect(() => {
+                const on = sig();
+                $s3Verdict.className = "verdict " + (on ? "match" : "nomatch") + " mt";
+                $s3Verdict.textContent = on ? "— MATCH —" : "— no match —";
+                $s3Watched.textContent = cached;
+            });
+        }
+        $s3Query.addEventListener("input", s3Rebind);
+        s3Rebind();
+
+        function updateVw() { $s3Vw.textContent = window.innerWidth + " px"; }
+        window.addEventListener("resize", updateVw, { passive: true });
+        updateVw();
+
+        // ============================================================
+        // S4 · Flip storm — dispatch N events, count dedupe
+        // ============================================================
+        const s4Sig = media(S4_QUERY);
+        let s4Events = 0;
+        let s4Runs = 0;
+        effect(() => { s4Sig(); s4Runs = (s4Runs + 1) | 0; });
+        const s4Baseline = s4Runs;
+
+        $s4Run.addEventListener("pointerdown", () => {
+            const n = Math.max(1, ($s4N.value | 0) || 10000);
+            $s4Run.disabled = true;
+            $s4Events.textContent = "0";
+            $s4Runs.textContent = "0";
+            $s4Wall.textContent = "…";
+            requestAnimationFrame(() => {
+                s4Events = 0;
+                s4Runs = s4Baseline;
+                const t0 = performance.now();
+                for (let i = 0; i < n; i++) {
+                    // Pattern T T T F F F — dedupe absorbs 2/3 of events.
+                    const m = (i % 6) < 3;
+                    mockFlip(S4_QUERY, m);
+                    s4Events = (s4Events + 1) | 0;
+                }
+                const t1 = performance.now();
+                $s4Events.textContent = s4Events;
+                $s4Runs.textContent = (s4Runs - s4Baseline);
+                $s4Wall.textContent = (t1 - t0).toFixed(1) + " ms";
+                $s4Run.disabled = false;
+            });
+        });
+    </script>
+</body>
+</html>
