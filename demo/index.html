@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@zakkster/lite-media — oscilloscope</title>
+    <title>@zakkster/lite-media — oscilloscope · v1.1</title>
     <script type="importmap">
         {
             "imports": {
@@ -13,9 +13,6 @@
         }
     </script>
     <style>
-        /* Per-property hex-first / oklch-second declaration. If oklch isn't
-           supported, the second declaration is invalid and the browser falls
-           back to the first — no @supports block needed. */
         :root {
             --bg:        #061510;
             --bg:        oklch(0.15 0.03 165);
@@ -59,17 +56,8 @@
             gap: 1rem;
             flex-wrap: wrap;
         }
-        header h1 {
-            margin: 0;
-            font-size: 1rem;
-            font-weight: 600;
-            letter-spacing: 0.08em;
-            color: var(--fg-hot);
-        }
-        header .sub {
-            color: var(--fg-dim);
-            font-size: 0.8125rem;
-        }
+        header h1 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: 0.08em; color: var(--fg-hot); }
+        header .sub { color: var(--fg-dim); font-size: 0.8125rem; }
 
         #tabs {
             display: flex;
@@ -96,24 +84,15 @@
             background: var(--bg);
         }
         @media (hover: hover) {
-            #tabs button:not(.active):hover {
-                color: var(--fg);
-                border-color: var(--fg-dim);
-            }
+            #tabs button:not(.active):hover { color: var(--fg); border-color: var(--fg-dim); }
         }
 
         main { padding: 1rem 1.25rem 2rem; }
         .scene { display: none; }
         .scene.active { display: block; }
 
-        .grid {
-            display: grid;
-            gap: 1rem;
-            grid-template-columns: 1fr;
-        }
-        @media (min-width: 60rem) {
-            .grid { grid-template-columns: 1fr 1fr; }
-        }
+        .grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+        @media (min-width: 60rem) { .grid { grid-template-columns: 1fr 1fr; } }
 
         .panel {
             background: var(--bg-2);
@@ -128,52 +107,34 @@
             text-transform: uppercase;
         }
 
-        /* --- utility classes (replace inline style=) --- */
+        /* utilities */
         .mt   { margin-top: 1rem; }
         .dim  { color: var(--fg-dim); font-size: 0.8125rem; }
         .dim.tiny { font-size: 0.75rem; }
-        .row  { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .row  { display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center; }
         .input-narrow { max-width: 12rem; }
 
-        /* --- S1 prefs --- */
-        .prefs {
-            display: grid;
-            gap: 0.5rem;
-            grid-template-columns: 1fr 1fr;
-        }
+        .prefs { display: grid; gap: 0.5rem; grid-template-columns: 1fr 1fr; }
         .pref {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            display: flex; align-items: center; gap: 0.5rem;
             padding: 0.375rem 0.5rem;
             border: 1px solid var(--grid);
             background: var(--bg);
             font-size: 0.8125rem;
         }
         .pref .dot {
-            width: 0.75rem;
-            height: 0.75rem;
-            border-radius: 50%;
+            width: 0.75rem; height: 0.75rem; border-radius: 50%;
             background: var(--off);
             box-shadow: 0 0 0 1px var(--grid) inset;
             flex: 0 0 auto;
         }
-        .pref.on .dot {
-            background: var(--fg-hot);
-            box-shadow: 0 0 0.5rem var(--fg), 0 0 0 1px var(--fg-hot) inset;
-        }
+        .pref.on .dot { background: var(--fg-hot); box-shadow: 0 0 0.5rem var(--fg), 0 0 0 1px var(--fg-hot) inset; }
         .pref .name { color: var(--fg); }
         .pref.on .name { color: var(--fg-hot); }
 
-        .controls {
-            display: grid;
-            gap: 0.375rem;
-            grid-template-columns: 1fr;
-        }
+        .controls { display: grid; gap: 0.375rem; grid-template-columns: 1fr; }
         .toggle {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            display: flex; align-items: center; justify-content: space-between;
             padding: 0.375rem 0.5rem;
             border: 1px solid var(--grid);
             background: var(--bg);
@@ -181,12 +142,7 @@
             cursor: pointer;
             user-select: none;
         }
-        .toggle .kbd {
-            font-size: 0.75rem;
-            color: var(--fg-dim);
-            border: 1px solid var(--grid);
-            padding: 0 0.375rem;
-        }
+        .toggle .kbd { font-size: 0.75rem; color: var(--fg-dim); border: 1px solid var(--grid); padding: 0 0.375rem; }
         .toggle.on { color: var(--fg-hot); border-color: var(--fg); }
 
         .log {
@@ -201,23 +157,12 @@
         .log .line { color: var(--fg-dim); }
         .log .line.fresh { color: var(--fg-hot); }
 
-        /* --- S2 grid + cells --- */
-        .s2-grid {
-            display: grid;
-            grid-template-columns: repeat(10, 1fr);
-            gap: 3px;
-            margin-top: 1rem;
-        }
-        .s2-cell {
-            height: 2rem;
-            border: 1px solid var(--grid);
-            background: var(--bg);
-        }
+        .s2-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-top: 1rem; }
+        .s2-cell { height: 2rem; border: 1px solid var(--grid); background: var(--bg); }
         .s2-cell.on { background: var(--fg-hot); }
 
         .stat {
-            display: flex;
-            justify-content: space-between;
+            display: flex; justify-content: space-between;
             padding: 0.25rem 0;
             border-bottom: 1px dashed var(--grid);
             font-size: 0.8125rem;
@@ -252,10 +197,7 @@
         }
         button.big:disabled { opacity: 0.5; cursor: not-allowed; }
         @media (hover: hover) {
-            button.big:not(:disabled):hover {
-                color: var(--fg-hot);
-                border-color: var(--fg-hot);
-            }
+            button.big:not(:disabled):hover { color: var(--fg-hot); border-color: var(--fg-hot); }
         }
 
         .verdict {
@@ -268,12 +210,81 @@
         }
         .verdict.match   { color: var(--fg-hot); border-color: var(--fg); }
         .verdict.nomatch { color: var(--fg-dim); }
+
+        /* --- S5 · container query playground --- */
+        .s5-wrap {
+            container-type: inline-size;
+            border: 1px solid var(--fg-dim);
+            background: var(--bg);
+            padding: 1rem;
+            position: relative;
+            resize: horizontal;
+            overflow: hidden;
+            min-width: 12rem;
+            max-width: 40rem;
+        }
+        .s5-wrap .s5-content {
+            padding: 1rem;
+            border: 1px dashed var(--grid);
+            background: var(--bg-2);
+        }
+        .s5-wrap .s5-content h3 {
+            margin: 0 0 0.5rem;
+            font-size: 1rem;
+            color: var(--fg);
+        }
+        .s5-wrap .s5-content p {
+            margin: 0;
+            color: var(--fg-dim);
+            font-size: 0.8125rem;
+        }
+        .s5-wrap.s5-narrow .s5-content { border-color: var(--fg-dim); }
+        .s5-wrap.s5-narrow .s5-content h3 { color: var(--warn); }
+        .s5-wrap.s5-wide .s5-content { border-color: var(--fg); background: var(--bg); }
+        .s5-wrap.s5-wide .s5-content h3 { color: var(--fg-hot); }
+        .s5-verdict-panel {
+            display: grid;
+            gap: 0.5rem;
+            grid-template-columns: 1fr 1fr;
+            margin-top: 1rem;
+        }
+        .s5-verdict-panel .pref {
+            justify-content: space-between;
+        }
+
+        /* --- S6 · createMedia isolation --- */
+        .s6-columns {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: 1fr 1fr;
+        }
+        .s6-inst {
+            background: var(--bg);
+            border: 1px solid var(--grid);
+            padding: 0.75rem;
+        }
+        .s6-inst h3 {
+            margin: 0 0 0.5rem;
+            font-size: 0.8125rem;
+            color: var(--fg-dim);
+            letter-spacing: 0.06em;
+        }
+        .s6-verdict {
+            font-size: 1.25rem;
+            padding: 0.75rem 0;
+            text-align: center;
+            border: 1px solid var(--grid);
+            background: var(--bg-2);
+            margin-bottom: 0.5rem;
+        }
+        .s6-verdict.on  { color: var(--fg-hot); border-color: var(--fg); }
+        .s6-verdict.off { color: var(--fg-dim); }
     </style>
 </head>
 <body>
     <header>
         <h1>LITE-MEDIA</h1>
-        <span class="sub">reactive media &amp; preference signals · v1.0.0</span>
+        <span class="sub">reactive media · container-query · preference signals · v1.1.0</span>
     </header>
 
     <nav id="tabs">
@@ -281,6 +292,8 @@
         <button data-scene="s2">S2 · REGISTRY SCOPE</button>
         <button data-scene="s3">S3 · QUERY TEST</button>
         <button data-scene="s4">S4 · FLIP STORM</button>
+        <button data-scene="s5">S5 · CONTAINER</button>
+        <button data-scene="s6">S6 · CREATEMEDIA</button>
     </nav>
 
     <main>
@@ -300,9 +313,8 @@
                         <div class="pref" data-key="rt"><span class="dot"></span><span class="name">reducedTransparency</span></div>
                     </div>
                 </div>
-
                 <div class="panel">
-                    <h2>Mock OS toggles (flip the underlying MQL)</h2>
+                    <h2>Mock OS toggles</h2>
                     <div class="controls" id="s1-toggles">
                         <div class="toggle" data-key="rm"><span>reducedMotion</span><span class="kbd">CLICK</span></div>
                         <div class="toggle" data-key="ds"><span>darkScheme</span><span class="kbd">CLICK</span></div>
@@ -315,7 +327,6 @@
                     </div>
                 </div>
             </div>
-
             <div class="panel mt">
                 <h2>onChange log (last 20 flips)</h2>
                 <div id="s1-log" class="log"></div>
@@ -327,7 +338,7 @@
             <div class="grid">
                 <div class="panel">
                     <h2>50 subscribers to ONE media() signal</h2>
-                    <p class="dim">Every subscriber calls <code>media("(max-width: 40rem)")</code> — memoization means one MQL, one browser subscription, one flip fans out to all 50 effects.</p>
+                    <p class="dim">Memoization means one MQL, one browser subscription, one flip fans out to all 50.</p>
                     <button class="big" id="s2-flip">FLIP MQL</button>
                     <div id="s2-grid" class="s2-grid"></div>
                 </div>
@@ -348,16 +359,15 @@
             <div class="grid">
                 <div class="panel">
                     <h2>Custom query — real window.matchMedia</h2>
-                    <p class="dim">Enter any valid media query. lite-media memoizes by string, so pasting the same query twice hits the cache.</p>
+                    <p class="dim">Any valid media query. Memoized by string.</p>
                     <input type="text" id="s3-query" value="(max-width: 40rem)" spellcheck="false">
                     <div id="s3-verdict" class="verdict nomatch mt">— NO MATCH —</div>
                 </div>
                 <div class="panel">
                     <h2>Cache state</h2>
                     <div class="stat"><span class="k">watched</span><span class="v" id="s3-watched">–</span></div>
-                    <div class="stat"><span class="k">this query previously seen</span><span class="v" id="s3-cached">–</span></div>
                     <div class="stat"><span class="k">current viewport width</span><span class="v" id="s3-vw">–</span></div>
-                    <p class="dim tiny mt">Try resizing the window. Verdicts recompute in the browser; lite-media just observes.</p>
+                    <p class="dim tiny mt">Resize the window. Verdicts recompute in the browser.</p>
                 </div>
             </div>
         </section>
@@ -366,8 +376,8 @@
         <section id="s4" class="scene">
             <div class="grid">
                 <div class="panel">
-                    <h2>Flip storm — dispatch N mock events</h2>
-                    <p class="dim">A mock MQL dispatches N alternating events. Object.is dedupe means the effect fires once per real flip, not once per event. Compare "events dispatched" vs "effect runs" — that's the zero-GC dedupe in action.</p>
+                    <h2>Flip storm — Object.is dedupe in action</h2>
+                    <p class="dim">Events pattern T T T F F F. Effect runs ≈ N/3.</p>
                     <div class="row">
                         <input type="number" id="s4-n" value="10000" min="1" step="1000" class="input-narrow">
                         <button class="big" id="s4-run">RUN STORM</button>
@@ -378,7 +388,64 @@
                 </div>
                 <div class="panel">
                     <h2>Notes</h2>
-                    <p class="dim">Events alternate <code>true / true / true / false / false / false / true / …</code> — you'll see roughly N/3 effect runs for N events. If you switch to <code>Math.random() &lt; 0.5</code>, the ratio drops to ~50% (approximate flip rate). Both cases prove the same thing: <em>lite-media does nothing between real flips</em>.</p>
+                    <p class="dim">Ratio proves lite-media does nothing between real flips — Object.is drops equal values in lite-signal, no allocation on redundant events.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- S5 · Container query — Engine B live -->
+        <section id="s5" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>containerMedia() — drag the resize handle</h2>
+                    <p class="dim">Live browser demo: the container below has <code>container-type: inline-size</code> and a native <code>resize: horizontal</code> handle. Two <code>containerMedia()</code> signals watch it — one for <code>(min-width: 20rem)</code>, one for <code>(min-width: 30rem)</code>. Verdicts flip via the browser's native <code>@container</code> evaluator; lite-media just observes.</p>
+                    <div id="s5-container" class="s5-wrap">
+                        <div class="s5-content">
+                            <h3 id="s5-headline">Adjust me</h3>
+                            <p id="s5-body">Grab the bottom-right corner and drag.</p>
+                        </div>
+                    </div>
+                    <p class="dim tiny mt">The container itself uses only browser-native <code>container-type</code>. lite-media added the sentinel + rules.</p>
+                </div>
+                <div class="panel">
+                    <h2>Signal state</h2>
+                    <div class="s5-verdict-panel">
+                        <div class="pref" data-s5="w20"><span class="name">min-width: 20rem</span><span class="dot"></span></div>
+                        <div class="pref" data-s5="w30"><span class="name">min-width: 30rem</span><span class="dot"></span></div>
+                    </div>
+                    <div class="stat mt"><span class="k">current container width</span><span class="v" id="s5-w">–</span></div>
+                    <div class="stat"><span class="k">watched (default instance)</span><span class="v" id="s5-watched">–</span></div>
+                    <p class="dim tiny mt">If your browser lacks <code>allow-discrete</code> transitions or <code>@container</code>, the signals stay at initial: false. Chrome 117+, Firefox 129+, Safari 17.4+ fully supported.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- S6 · createMedia isolation -->
+        <section id="s6" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>createMedia() — two isolated instances</h2>
+                    <p class="dim">Each column runs a separate <code>createMedia()</code> instance with its own mock <code>matchMedia</code>. Flipping one has zero effect on the other — no shared cache, no leaking event listeners.</p>
+                    <div class="s6-columns">
+                        <div class="s6-inst">
+                            <h3>INSTANCE A</h3>
+                            <div id="s6-a-verdict" class="s6-verdict off">— (small)</div>
+                            <button class="big" id="s6-a-flip">FLIP A</button>
+                        </div>
+                        <div class="s6-inst">
+                            <h3>INSTANCE B</h3>
+                            <div id="s6-b-verdict" class="s6-verdict off">— (small)</div>
+                            <button class="big" id="s6-b-flip">FLIP B</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <h2>Per-instance stats</h2>
+                    <div class="stat"><span class="k">A · watched</span><span class="v" id="s6-a-watched">0</span></div>
+                    <div class="stat"><span class="k">A · locked</span><span class="v" id="s6-a-locked">false</span></div>
+                    <div class="stat"><span class="k">B · watched</span><span class="v" id="s6-b-watched">0</span></div>
+                    <div class="stat"><span class="k">B · locked</span><span class="v" id="s6-b-locked">false</span></div>
+                    <p class="dim tiny mt">Note that both instances stay <code>locked: false</code> forever — scoped instances never lock. Per-request SSR uses this exact pattern.</p>
                 </div>
             </div>
         </section>
@@ -386,9 +453,11 @@
 
     <script type="module">
         import { effect } from "@zakkster/lite-signal";
-        import { configure, media, stats } from "@zakkster/lite-media";
+        import {
+            configure, media, containerMedia, createMedia, stats,
+        } from "@zakkster/lite-media";
 
-        // ----- constants precomputed at init -----
+        // --- constants ---
         const S1_KEYS = ["rm", "ds", "hc", "cp", "fc", "mc", "rd", "rt"];
         const S1_QUERY_BY_KEY = {
             rm: "(prefers-reduced-motion: reduce)",
@@ -404,22 +473,19 @@
         const S2_QUERY = "(max-width: 40rem)";
         const S2_N = 50;
         const S4_QUERY = "(demo: flip-storm)";
+        const S5_Q20 = "(min-width: 20rem)";
+        const S5_Q30 = "(min-width: 30rem)";
 
-        // ----- mock MQL registry with real-matchMedia fall-through -----
-        // The mock owns preference queries + fixed demo queries so S1/S2/S4
-        // are deterministic. Anything else (S3's user-entered query) hits
-        // the real globalThis.matchMedia.
+        // --- mock MQL registry with real fall-through for the DEFAULT instance ---
+        // Preference queries + fixed demo queries are mock-owned so S1/S2/S4
+        // are deterministic. S3's user-entered query hits the real matchMedia.
         const mockRegistry = new Map();
         const $realMatchMedia = typeof globalThis.matchMedia === "function"
-            ? globalThis.matchMedia.bind(globalThis)
-            : null;
+            ? globalThis.matchMedia.bind(globalThis) : null;
 
         function ensureMock(q) {
             let e = mockRegistry.get(q);
-            if (e === undefined) {
-                e = { matches: false, listeners: new Set() };
-                mockRegistry.set(q, e);
-            }
+            if (e === undefined) { e = { matches: false, listeners: new Set() }; mockRegistry.set(q, e); }
             return e;
         }
         function mockFlip(q, m) {
@@ -428,72 +494,76 @@
             e.matches = m;
             for (const h of e.listeners) h({ matches: m });
         }
-        function mockCount(q) {
-            const e = mockRegistry.get(q);
-            return e === undefined ? 0 : e.listeners.size;
-        }
+        function mockCount(q) { const e = mockRegistry.get(q); return e === undefined ? 0 : e.listeners.size; }
 
         function matchMediaMockOrReal(q) {
             if (mockRegistry.has(q)) {
                 const e = mockRegistry.get(q);
                 return {
                     get matches() { return e.matches; },
-                    addEventListener(type, h) { if (type === "change") e.listeners.add(h); },
-                    removeEventListener(type, h) { if (type === "change") e.listeners.delete(h); },
+                    addEventListener(t, h) { if (t === "change") e.listeners.add(h); },
+                    removeEventListener(t, h) { if (t === "change") e.listeners.delete(h); },
                 };
             }
             if ($realMatchMedia !== null) return $realMatchMedia(q);
             return { matches: false, addEventListener() {}, removeEventListener() {} };
         }
 
-        // Pre-seed all mock-owned queries so materialization sees them.
         for (const k of S1_KEYS) ensureMock(S1_QUERY_BY_KEY[k]);
         ensureMock(S2_QUERY);
         ensureMock(S4_QUERY);
 
         configure({ matchMedia: matchMediaMockOrReal });
 
-        // ----- cached DOM refs (blueprint convention) -----
+        // --- cached DOM refs ---
         const $tabs = document.getElementById("tabs");
         const $tabButtons = $tabs.querySelectorAll("button");
         const $scenes = document.querySelectorAll(".scene");
 
-        // S1
         const $s1PrefEls = new Map();
-        for (const el of document.querySelectorAll("#s1-prefs .pref")) {
-            $s1PrefEls.set(el.dataset.key, el);
-        }
+        for (const el of document.querySelectorAll("#s1-prefs .pref")) $s1PrefEls.set(el.dataset.key, el);
         const $s1TogEls = new Map();
-        for (const el of document.querySelectorAll("#s1-toggles .toggle")) {
-            $s1TogEls.set(el.dataset.key, el);
-        }
+        for (const el of document.querySelectorAll("#s1-toggles .toggle")) $s1TogEls.set(el.dataset.key, el);
         const $s1Log = document.getElementById("s1-log");
 
-        // S2
         const $s2Grid = document.getElementById("s2-grid");
         const $s2Flip = document.getElementById("s2-flip");
-        const $s2Watched   = document.getElementById("s2-watched");
-        const $s2Locked    = document.getElementById("s2-locked");
-        const $s2Subs      = document.getElementById("s2-subs");
-        const $s2Flips     = document.getElementById("s2-flips");
-        const $s2Runs      = document.getElementById("s2-runs");
+        const $s2Watched = document.getElementById("s2-watched");
+        const $s2Locked  = document.getElementById("s2-locked");
+        const $s2Subs    = document.getElementById("s2-subs");
+        const $s2Flips   = document.getElementById("s2-flips");
+        const $s2Runs    = document.getElementById("s2-runs");
         const $s2Listeners = document.getElementById("s2-listeners");
 
-        // S3
         const $s3Query   = document.getElementById("s3-query");
         const $s3Verdict = document.getElementById("s3-verdict");
         const $s3Watched = document.getElementById("s3-watched");
-        const $s3Cached  = document.getElementById("s3-cached");
         const $s3Vw      = document.getElementById("s3-vw");
 
-        // S4
         const $s4N      = document.getElementById("s4-n");
         const $s4Run    = document.getElementById("s4-run");
         const $s4Events = document.getElementById("s4-events");
         const $s4Runs   = document.getElementById("s4-runs");
         const $s4Wall   = document.getElementById("s4-wall");
 
-        // ----- tab switching -----
+        const $s5Container = document.getElementById("s5-container");
+        const $s5Headline  = document.getElementById("s5-headline");
+        const $s5Body      = document.getElementById("s5-body");
+        const $s5W20Pref   = document.querySelector('[data-s5="w20"]');
+        const $s5W30Pref   = document.querySelector('[data-s5="w30"]');
+        const $s5W         = document.getElementById("s5-w");
+        const $s5Watched   = document.getElementById("s5-watched");
+
+        const $s6AVerdict = document.getElementById("s6-a-verdict");
+        const $s6BVerdict = document.getElementById("s6-b-verdict");
+        const $s6AFlip    = document.getElementById("s6-a-flip");
+        const $s6BFlip    = document.getElementById("s6-b-flip");
+        const $s6AWatched = document.getElementById("s6-a-watched");
+        const $s6ALocked  = document.getElementById("s6-a-locked");
+        const $s6BWatched = document.getElementById("s6-b-watched");
+        const $s6BLocked  = document.getElementById("s6-b-locked");
+
+        // --- tabs ---
         $tabs.addEventListener("click", (ev) => {
             const btn = ev.target.closest("button[data-scene]");
             if (btn === null) return;
@@ -501,14 +571,11 @@
             for (const s of $scenes) s.classList.toggle("active", s.id === btn.dataset.scene);
         });
 
-        // ============================================================
-        // S1 · Preference matrix
-        // ============================================================
-        const s1Sigs = new Map();
-        for (const k of S1_KEYS) s1Sigs.set(k, media(S1_QUERY_BY_KEY[k]));
-
+        // ==========================================================
+        // S1 · preference matrix
+        // ==========================================================
         for (const k of S1_KEYS) {
-            const sig = s1Sigs.get(k);
+            const sig = media(S1_QUERY_BY_KEY[k]);
             const $el = $s1PrefEls.get(k);
             const $tog = $s1TogEls.get(k);
             effect(() => {
@@ -517,7 +584,6 @@
                 $tog.classList.toggle("on", on);
             });
         }
-
         for (const [k, $tog] of $s1TogEls) {
             $tog.addEventListener("pointerdown", () => {
                 const q = S1_QUERY_BY_KEY[k];
@@ -526,7 +592,6 @@
                 s1LogAdd(`${k} → ${next ? "on" : "off"}`);
             });
         }
-
         let s1LogSeq = 0;
         function s1LogAdd(msg) {
             const line = document.createElement("div");
@@ -538,13 +603,12 @@
             while ($s1Log.childElementCount > S1_MAX_LOG) $s1Log.lastElementChild.remove();
         }
 
-        // ============================================================
-        // S2 · Registry scope — 50 subscribers to one signal
-        // ============================================================
+        // ==========================================================
+        // S2 · registry scope
+        // ==========================================================
         const s2Sig = media(S2_QUERY);
         let s2TotalRuns = 0;
         let s2FlipCount = 0;
-
         for (let i = 0; i < S2_N; i++) {
             const cell = document.createElement("div");
             cell.className = "s2-cell";
@@ -555,28 +619,15 @@
                 s2TotalRuns = (s2TotalRuns + 1) | 0;
             });
         }
-
         $s2Flip.addEventListener("pointerdown", () => {
             const cur = mockRegistry.get(S2_QUERY).matches;
             mockFlip(S2_QUERY, !cur);
             s2FlipCount = (s2FlipCount + 1) | 0;
         });
 
-        // Stats poll at ~10 Hz. This setInterval is DEMO code, not library.
-        // The library itself uses no timers on any path.
-        setInterval(() => {
-            const st = stats();
-            $s2Watched.textContent = st.watched;
-            $s2Locked.textContent = st.locked ? "true" : "false";
-            $s2Subs.textContent = S2_N;
-            $s2Flips.textContent = s2FlipCount;
-            $s2Runs.textContent = s2TotalRuns;
-            $s2Listeners.textContent = mockCount(S2_QUERY);
-        }, 100);
-
-        // ============================================================
-        // S3 · Query test — over real matchMedia
-        // ============================================================
+        // ==========================================================
+        // S3 · query test — real matchMedia
+        // ==========================================================
         let s3StopCurrent = () => {};
         function s3Rebind() {
             s3StopCurrent();
@@ -588,31 +639,26 @@
                 return;
             }
             const sig = media(q);
-            const cached = stats().watched;
-            $s3Cached.textContent = "listed";
             s3StopCurrent = effect(() => {
                 const on = sig();
                 $s3Verdict.className = "verdict " + (on ? "match" : "nomatch") + " mt";
                 $s3Verdict.textContent = on ? "— MATCH —" : "— no match —";
-                $s3Watched.textContent = cached;
             });
         }
         $s3Query.addEventListener("input", s3Rebind);
         s3Rebind();
-
         function updateVw() { $s3Vw.textContent = window.innerWidth + " px"; }
         window.addEventListener("resize", updateVw, { passive: true });
         updateVw();
 
-        // ============================================================
-        // S4 · Flip storm — dispatch N events, count dedupe
-        // ============================================================
+        // ==========================================================
+        // S4 · flip storm
+        // ==========================================================
         const s4Sig = media(S4_QUERY);
         let s4Events = 0;
         let s4Runs = 0;
         effect(() => { s4Sig(); s4Runs = (s4Runs + 1) | 0; });
         const s4Baseline = s4Runs;
-
         $s4Run.addEventListener("pointerdown", () => {
             const n = Math.max(1, ($s4N.value | 0) || 10000);
             $s4Run.disabled = true;
@@ -624,7 +670,6 @@
                 s4Runs = s4Baseline;
                 const t0 = performance.now();
                 for (let i = 0; i < n; i++) {
-                    // Pattern T T T F F F — dedupe absorbs 2/3 of events.
                     const m = (i % 6) < 3;
                     mockFlip(S4_QUERY, m);
                     s4Events = (s4Events + 1) | 0;
@@ -636,6 +681,92 @@
                 $s4Run.disabled = false;
             });
         });
+
+        // ==========================================================
+        // S5 · containerMedia — live browser demo
+        // ==========================================================
+        // These signals go through the DEFAULT container engine (real browser).
+        const s5W20 = containerMedia($s5Container, S5_Q20);
+        const s5W30 = containerMedia($s5Container, S5_Q30);
+
+        effect(() => {
+            const on20 = s5W20();
+            const on30 = s5W30();
+            $s5W20Pref.classList.toggle("on", on20);
+            $s5W30Pref.classList.toggle("on", on30);
+            $s5Container.classList.toggle("s5-narrow", !on20);
+            $s5Container.classList.toggle("s5-wide", on30);
+            if (!on20)      { $s5Headline.textContent = "Narrow";  $s5Body.textContent = "Below 20rem — hide the details."; }
+            else if (!on30) { $s5Headline.textContent = "Medium";  $s5Body.textContent = "Between 20rem and 30rem."; }
+            else            { $s5Headline.textContent = "Wide";    $s5Body.textContent = "At or above 30rem — show the works."; }
+        });
+
+        // Poll container width + stats at ~10 Hz (demo only).
+        setInterval(() => {
+            $s5W.textContent = Math.round($s5Container.getBoundingClientRect().width) + " px";
+            $s5Watched.textContent = stats().watched;
+        }, 100);
+
+        // ==========================================================
+        // S6 · createMedia isolation
+        // ==========================================================
+        function makeIsolatedMock() {
+            let matches = false;
+            const listeners = new Set();
+            return {
+                matchMedia: (q) => ({
+                    get matches() { return matches; },
+                    addEventListener(t, h) { if (t === "change") listeners.add(h); },
+                    removeEventListener(t, h) { if (t === "change") listeners.delete(h); },
+                }),
+                flip() {
+                    matches = !matches;
+                    for (const h of listeners) h({ matches });
+                    return matches;
+                },
+            };
+        }
+
+        const mockA = makeIsolatedMock();
+        const mockB = makeIsolatedMock();
+        const instA = createMedia({ matchMedia: mockA.matchMedia, ssrDefault: false });
+        const instB = createMedia({ matchMedia: mockB.matchMedia, ssrDefault: false });
+        const sigA = instA.media("(demo: isolated)");
+        const sigB = instB.media("(demo: isolated)");
+
+        effect(() => {
+            const on = sigA();
+            $s6AVerdict.className = "s6-verdict " + (on ? "on" : "off");
+            $s6AVerdict.textContent = on ? "— MATCH —" : "— (small)";
+        });
+        effect(() => {
+            const on = sigB();
+            $s6BVerdict.className = "s6-verdict " + (on ? "on" : "off");
+            $s6BVerdict.textContent = on ? "— MATCH —" : "— (small)";
+        });
+
+        $s6AFlip.addEventListener("pointerdown", () => mockA.flip());
+        $s6BFlip.addEventListener("pointerdown", () => mockB.flip());
+
+        setInterval(() => {
+            const a = instA.stats();
+            const b = instB.stats();
+            $s6AWatched.textContent = a.watched;
+            $s6ALocked.textContent = String(a.locked);
+            $s6BWatched.textContent = b.watched;
+            $s6BLocked.textContent = String(b.locked);
+        }, 100);
+
+        // S2 stats poll (was here in v1.0 demo, restored)
+        setInterval(() => {
+            const st = stats();
+            $s2Watched.textContent = st.watched;
+            $s2Locked.textContent = st.locked ? "true" : "false";
+            $s2Subs.textContent = S2_N;
+            $s2Flips.textContent = s2FlipCount;
+            $s2Runs.textContent = s2TotalRuns;
+            $s2Listeners.textContent = mockCount(S2_QUERY);
+        }, 100);
     </script>
 </body>
 </html>
