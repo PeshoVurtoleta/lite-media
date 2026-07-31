@@ -34,7 +34,7 @@ Measured on **Apple M4 Pro (12 cores) · Node 26.3.1 · darwin/arm64**. Run `npm
 | Cold materialize (mock MQL, cache miss)           | 1.6 M ops/s       | 624 ns        |
 | `createMedia()` + 5 signals fully wired           | 674 K ops/s       | 1.48 μs       |
 
-**2.3 KB min+gz** for the full module — Engine A, Engine B, `createMedia`, 8 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
+**~2.8 KB min+gz** for the full module — Engine A, Engine B, `breakpoints`, `createMedia`, 10 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
 
 ## Hello
 
@@ -159,7 +159,7 @@ configure({
 
 ### Preference shortcuts
 
-Each is `() => MediaSignal` — hoist once per component, then read call-style. All 8 unchanged from v1.0. Also available as methods on scoped `createMedia()` instances.
+Each is `() => MediaSignal` — hoist once per component, then read call-style. All 10 available as methods on scoped `createMedia()` instances too. `standaloneDisplay()` and `highDynamicRange()` are new in v1.2.
 
 | Shortcut                      | Query                                     |
 | ----------------------------- | ----------------------------------------- |
@@ -171,8 +171,32 @@ Each is `() => MediaSignal` — hoist once per component, then read call-style. 
 | `moreContrast()`              | `(prefers-contrast: more)`                |
 | `reducedData()`               | `(prefers-reduced-data: reduce)`          |
 | `reducedTransparency()`       | `(prefers-reduced-transparency: reduce)`  |
+| `standaloneDisplay()`         | `(display-mode: standalone)`              |
+| `highDynamicRange()`          | `(dynamic-range: high)`                   |
 
-### `stats(): { watched, configured, locked }`
+### `breakpoints(map): BandSignal` — new in v1.2
+
+Compile a named breakpoint map into a **single** reactive string signal — the name of the active band:
+
+```js
+import { breakpoints } from "@zakkster/lite-media";
+
+const band = breakpoints({ sm: 0, md: 768, lg: 1024 }); // min-width in px
+effect(() => {
+    document.body.dataset.bp = band(); // "sm" | "md" | "lg"
+});
+```
+
+The active band is the name of the **highest threshold** whose `(min-width: Npx)` currently matches; the smallest entry is the **mobile-first floor**, returned whenever nothing larger matches. Key order does not matter — the map is sorted by threshold.
+
+- **One signal, not N.** The map compiles to one `computed<string>`. The band names are the map's own keys, returned by reference, so an unchanged band is `===`-stable — downstream effects run **exactly once per real band change**, never per resize frame.
+- **No width math in JS.** Each boundary is a constructed `(min-width: Npx)` query observed through `media()` (boundary signals are shared with `media()`), so the sentinel thesis holds and a band flip is a zero-allocation token swap.
+- **Memoized** per map (any key order → the same signal), and counted in `stats().bands`.
+- **Fails loud:** a non-object, empty, or non-finite/negative-valued map throws `TypeError`. Off-DOM it follows `ssrDefault` — `false` yields the floor band, `true` the top band; with neither `matchMedia` nor `ssrDefault` it throws like `media()`.
+
+With a literal map, TypeScript narrows the value to the union of the keys (`BandSignal<"sm" | "md" | "lg">`).
+
+### `stats(): { watched, bands, configured, locked }`
 
 Cheap live snapshot for demos, perf overlays, and test assertions.
 
@@ -264,6 +288,9 @@ Or use `createMedia({ containerEngine: mockEngine })` for tests that shouldn't t
 | `containerMedia(el, q)` — cache hit      | 0 hot-path (WeakMap + Map lookup)                 |
 | `containerMedia(el, q)` — cache miss, 1st per query | 1 sentinel `<div>` + 1 handler + 1 signal + 1 CSS rule + 1 registered property (first time only) |
 | `containerMedia(el, q)` — cache miss, ≥2 per query  | 1 sentinel + 1 handler + 1 signal            |
+| `breakpoints(map)` — cache hit           | 0 hot-path (Map lookup)                           |
+| `breakpoints(map)` — cache miss          | 1 computed + N boundary signals (via `media()`, once per threshold) |
+| Band read (`band()`) / band change       | 0 (cache hit; a change is a `===`-stable token swap) |
 | Signal read (`s()`)                      | 0                                                 |
 | `change` event → sig.set                 | 0                                                 |
 | `transitionrun` event → sig.set          | 0 hot-path (getComputedStyle read is cached)      |
@@ -279,8 +306,9 @@ Cost scales with **verdict flips**, not with browser events: an event that doesn
 
 - **v1.0.0** — Engine A: `media()`, 8 preferences, `configure()`, `stats()`.
 - **v1.1.0** — Engine B (`containerMedia`), `createMedia()` factory.
-- **v1.1.2** — Dev-only `container-type: normal` warning; SSR container contract + registry-bounds invariant pinned; `test/torture.mjs` proof gate (0 B/flip, 0 ArrayBuffer growth committed as numbers). *This release.*
-- **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token computed; reconsider `standaloneDisplay` / `highDynamicRange` based on consumer demand.
+- **v1.1.2** — Dev-only `container-type: normal` warning; SSR container contract + registry-bounds invariant pinned; `test/torture.mjs` proof gate (0 B/flip, 0 ArrayBuffer growth committed as numbers).
+- **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token band computed (0 B/band-change committed); `standaloneDisplay()` + `highDynamicRange()` complete the ten preference signals. *This release.*
+- **v1.2.x** — `@container style()` queries via the registered-property + sentinel primitive (deferred from v1.2.0 pending its own design pass).
 - **v1.3.0** — Shadow DOM multi-root support for engine B; iframe / Twitch panel-mode verification.
 - **v1.4.0** — Ecosystem wiring: `lite-ambient-fx` & `lite-scratch-fx` consume `reducedMotion` via `watchEffect` rAF gate; `lite-hueforge` pairs `moreContrast` / `forcedColors` with APCA role-floor selection.
 

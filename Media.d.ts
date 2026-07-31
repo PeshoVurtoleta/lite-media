@@ -1,10 +1,11 @@
 /**
- * @zakkster/lite-media v1.1.0 — TypeScript declarations.
+ * @zakkster/lite-media v1.2.0 — TypeScript declarations.
  *
  * The returned signal type is deliberately narrowed to hide `.set`/`.update`
- * from callers. At runtime the object is lite-signal's `Signal<boolean>`, so
- * a JS consumer or a TS cast can still write — see the README's "Read-only
- * by convention" note for why you should not.
+ * from callers. At runtime the object is lite-signal's `Signal<boolean>` (or,
+ * for `breakpoints()`, a `Computed<string>`), so a JS consumer or a TS cast
+ * can still write — see the README's "Read-only by convention" note for why
+ * you should not.
  */
 
 /**
@@ -20,6 +21,31 @@ export interface MediaSignal {
     /** Subscribe to changes. Returns an idempotent dispose function. */
     subscribe(fn: (value: boolean) => void): () => void;
 }
+
+/**
+ * A read-only reactive string returned by `breakpoints()`: the name of the
+ * active band. Structural subtype of lite-signal's `Computed<string>`. The
+ * value is one of the map's own keys, returned by reference, so an unchanged
+ * band is `===`-stable and notifies downstream exactly once per real change.
+ *
+ * `Name` narrows to the union of the map's keys when the map is a literal.
+ */
+export interface BandSignal<Name extends string = string> {
+    /** Tracked read. Registers a dependency on the current observer. */
+    (): Name;
+    /** Untracked read. Same value, no dependency registration. */
+    peek(): Name;
+    /** Subscribe to band changes. Returns an idempotent dispose function. */
+    subscribe(fn: (value: Name) => void): () => void;
+}
+
+/**
+ * A breakpoint map: band name to its `min-width` threshold in CSS pixels. The
+ * smallest-threshold entry is the mobile-first floor (returned whenever nothing
+ * larger matches). Values must be finite and non-negative or `breakpoints()`
+ * throws `TypeError` at compile time.
+ */
+export type BreakpointMap = Record<string, number>;
 
 /**
  * The MediaQueryList shape lite-media relies on. Any object that fulfils this
@@ -105,6 +131,7 @@ export type CreateMediaOptions = ConfigureOptions;
 export interface ScopedMedia {
     media(query: string): MediaSignal;
     containerMedia(el: Element | object, query: string): MediaSignal;
+    breakpoints<M extends BreakpointMap>(map: M): BandSignal<keyof M & string>;
     reducedMotion(): MediaSignal;
     darkScheme(): MediaSignal;
     hoverCapable(): MediaSignal;
@@ -113,6 +140,8 @@ export interface ScopedMedia {
     moreContrast(): MediaSignal;
     reducedData(): MediaSignal;
     reducedTransparency(): MediaSignal;
+    standaloneDisplay(): MediaSignal;
+    highDynamicRange(): MediaSignal;
     stats(): Stats;
     /**
      * @internal — test-only escape hatch. NOT part of the semver contract.
@@ -129,6 +158,8 @@ export interface ScopedMedia {
 export interface Stats {
     /** Number of memoized `media()` signals in the cache. */
     watched: number;
+    /** Number of memoized `breakpoints()` band computeds. */
+    bands: number;
     /**
      * Whether the instance was created with (or, for the default instance,
      * configured with) matchMedia, ssrDefault, or containerEngine.
@@ -199,6 +230,25 @@ export function media(query: string): MediaSignal;
  */
 export function containerMedia(el: Element | object, query: string): MediaSignal;
 
+/**
+ * Compile a named breakpoint map into a single reactive band signal on the
+ * default instance. The value is the active band: the name of the highest
+ * threshold whose `(min-width: Npx)` matches, or the smallest entry as the
+ * mobile-first floor. Identical maps (any key order) share one memoized
+ * computed. Boundary signals are shared with `media()` through the same cache.
+ *
+ * With a literal map, the returned signal's value narrows to the union of the
+ * map's keys, e.g. `breakpoints({ sm: 0, md: 768 })` is `BandSignal<"sm" | "md">`.
+ *
+ * Reads are zero-allocation; a band change notifies downstream exactly once.
+ * Same lock semantics as `media()`.
+ *
+ * @throws {TypeError} if the map is not an object, is empty, or any value is
+ *   not a finite, non-negative number
+ * @throws {Error} if no matchMedia is available and no `ssrDefault` was configured
+ */
+export function breakpoints<M extends BreakpointMap>(map: M): BandSignal<keyof M & string>;
+
 /** `(prefers-reduced-motion: reduce)` — user requests reduced motion. */
 export function reducedMotion(): MediaSignal;
 /** `(prefers-color-scheme: dark)` — user prefers dark UI. */
@@ -215,6 +265,10 @@ export function moreContrast(): MediaSignal;
 export function reducedData(): MediaSignal;
 /** `(prefers-reduced-transparency: reduce)` — user requests reduced transparency. */
 export function reducedTransparency(): MediaSignal;
+/** `(display-mode: standalone)` — running as an installed / standalone PWA. */
+export function standaloneDisplay(): MediaSignal;
+/** `(dynamic-range: high)` — display and browser support a high dynamic range. */
+export function highDynamicRange(): MediaSignal;
 
 /** Cheap live snapshot of the default instance's state. */
 export function stats(): Stats;

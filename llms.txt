@@ -8,6 +8,9 @@
 > (containerMedia) + createMedia() scoped instances. v1.1.2 adds a dev-only
 > container-type footgun warning (dropped in production), pins the SSR
 > container contract and registry-bounds invariant, and adds test/torture.mjs.
+> v1.2.0 adds breakpoints({name:minWidthPx}) — one interned-token band
+> computed<string> — and standaloneDisplay()/highDynamicRange(), completing
+> the ten curated preference signals.
 
 ## Design in one line
 
@@ -35,21 +38,23 @@ Consequences:
 | Cold materialize (mock MQL, cache miss)     | 1.6 M ops/s     | 624 ns         |
 | createMedia() + 5 signals wired             | 674 K ops/s     | 1.48 μs        |
 
-Bundle size: ~2,270 B min+gz for the full module (bundled, lite-signal
-external). The dev-only container-type warning sits behind a
-`process.env.NODE_ENV !== "production"` guard, so a production build drops it.
-Run `npm run bench` locally; the harness prints a machine stamp so results are
-reproducible. Allocation claims are committed as numbers by `npm run
-test:torture` (node --expose-gc): 0 B/flip on both engines, 0 ArrayBuffer
+Bundle size: ~2,825 B min+gz for the full module (bundled, lite-signal
+external; +~555 B over 1.1.2 for breakpoints). The dev-only container-type
+warning sits behind a `process.env.NODE_ENV !== "production"` guard, so a
+production build drops it. Run `npm run bench` locally; the harness prints a
+machine stamp so results are reproducible. Allocation claims are committed as
+numbers by `npm run test:torture` (node --expose-gc): 0 B/flip on both engines,
+0 B per breakpoints band change, 0 B per stable-band read, 0 ArrayBuffer
 growth, 0 major GC across a 100-signal x 2000-toggle storm.
 
-## Public API (v1.1.0)
+## Public API (v1.2.0)
 
     import { signal, effect } from "@zakkster/lite-signal";
     import {
-        media, containerMedia, createMedia, configure, stats,
+        media, containerMedia, breakpoints, createMedia, configure, stats,
         reducedMotion, darkScheme, hoverCapable, coarsePointer,
         forcedColors, moreContrast, reducedData, reducedTransparency,
+        standaloneDisplay, highDynamicRange,
         __resetForTests, __flipForTests,
     } from "@zakkster/lite-media";
 
@@ -142,10 +147,38 @@ media()/containerMedia()/preference call.
 Silently ignores null/undefined/non-object. Multiple pre-lock calls compose.
 Post-lock throws Error. Failed materialization does NOT lock.
 
+### breakpoints(map): BandSignal (v1.2.0)
+
+Compile a named breakpoint map { name: minWidthPx } into ONE reactive
+string signal — the name of the active band. Available on both the
+module-level default and scoped instances. Same lock semantics as media().
+
+    const band = breakpoints({ sm: 0, md: 768, lg: 1024 });
+    band();  // "sm" | "md" | "lg"  (tracked read; .peek()/.subscribe() too)
+
+Model:
+- Active band = name of the HIGHEST threshold whose (min-width: Npx) matches.
+  The SMALLEST entry is the mobile-first floor, returned whenever nothing
+  larger matches. Key order is irrelevant — sorted by threshold.
+- One computed<string>, not N booleans. The band names are the map's own keys,
+  returned by reference, so an unchanged band is ===-stable and downstream
+  effects run exactly once per REAL band change, never per resize frame.
+- Each boundary is a constructed (min-width: Npx) query observed via media()
+  (boundary booleans are shared with media() through the same cache) — JS never
+  compares widths, so the sentinel thesis holds and a band flip is 0-alloc.
+- Memoized per canonical map key (any order -> same computed); counted in
+  stats().bands.
+- Fails loud: non-object / empty / non-finite / negative value -> TypeError at
+  compile; a throwing compile caches nothing. Off-DOM follows ssrDefault
+  (false -> floor band, true -> top band); neither matchMedia nor ssrDefault
+  -> throws like media().
+- TS: with a literal map the value narrows to the union of keys,
+  BandSignal<"sm" | "md" | "lg">.
+
 ### Preference shortcuts
 
 Each is () => MediaSignal, delegating to media() with a fixed query.
-Available on both the module-level default and scoped instances.
+Available on both the module-level default and scoped instances. Ten total.
 
     reducedMotion       — (prefers-reduced-motion: reduce)
     darkScheme          — (prefers-color-scheme: dark)
@@ -155,10 +188,13 @@ Available on both the module-level default and scoped instances.
     moreContrast        — (prefers-contrast: more)
     reducedData         — (prefers-reduced-data: reduce)
     reducedTransparency — (prefers-reduced-transparency: reduce)
+    standaloneDisplay   — (display-mode: standalone)     [v1.2.0]
+    highDynamicRange    — (dynamic-range: high)           [v1.2.0]
 
 ### stats(): Stats
 
-    watched     — memoized signal count in cache
+    watched     — memoized media() signal count in cache
+    bands       — memoized breakpoints() band computed count [v1.2.0]
     configured  — matchMedia/ssrDefault/containerEngine explicitly set?
     locked      — successful materialization has happened (always false on
                   scoped instances)
@@ -305,8 +341,11 @@ Not a runtime error, just graceful degradation.
 - 1.1.0 — Engine B: containerMedia. createMedia() scoped instances.
 - 1.1.2 — Dev-only container-type warning; SSR container contract +
           registry-bounds invariant pinned; test/torture.mjs proof gate.
-- 1.2.0 — breakpoints({ sm, md, lg }) interned-token computed; reconsider
-          standaloneDisplay / highDynamicRange based on consumer demand.
+- 1.2.0 — breakpoints({ sm, md, lg }) interned-token band computed (0 B/band-
+          change committed); standaloneDisplay() + highDynamicRange() complete
+          the ten preference signals. [current]
+- 1.2.x — @container style() queries via the registered-property + sentinel
+          primitive (deferred from 1.2.0 for its own design pass).
 - 1.3.0 — Shadow DOM multi-root support for engine B; iframe / Twitch
           panel-mode verification pass.
 - 1.4.0 — Ecosystem wiring: lite-ambient-fx & lite-scratch-fx consume

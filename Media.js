@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.1.2
+ * @zakkster/lite-media v1.2.0
  *
  * Reactive media & preference signals. v1.1.0 adds:
  *   - createMedia({ matchMedia, ssrDefault, containerEngine }) — scoped
@@ -12,7 +12,14 @@
  * production), pins the SSR container contract and the registry-bounds
  * invariant, and adds the __flipForTests container seam. No new runtime API.
  *
- * The v1.0 module-level API (`media`, `configure`, `stats`, 8 preferences,
+ * v1.2.0 adds:
+ *   - breakpoints({ name: minWidthPx }) — a named responsive band map compiled
+ *     to ONE interned-token computed<string> (the active band name). Reads are
+ *     zero-alloc; a band change notifies downstream exactly once.
+ *   - standaloneDisplay() and highDynamicRange() — the final two of the ten
+ *     curated preference signals.
+ *
+ * The v1.0 module-level API (`media`, `configure`, `stats`, preferences,
  * `__resetForTests`) is preserved. Internally it now delegates to a lazily
  * created default instance; `configure()` mutates that instance's options
  * before the first successful materialization (same lock semantics as v1.0).
@@ -25,7 +32,7 @@
  * Copyright (c) Zahary Shinikchiev. MIT licensed.
  */
 
-import { signal } from "@zakkster/lite-signal";
+import { signal, computed } from "@zakkster/lite-signal";
 
 // ---------------------------------------------------------------------------
 // Interned preference query strings
@@ -39,6 +46,8 @@ const Q_FORCED_COLORS        = "(forced-colors: active)";
 const Q_MORE_CONTRAST        = "(prefers-contrast: more)";
 const Q_REDUCED_DATA         = "(prefers-reduced-data: reduce)";
 const Q_REDUCED_TRANSPARENCY = "(prefers-reduced-transparency: reduce)";
+const Q_STANDALONE_DISPLAY   = "(display-mode: standalone)";
+const Q_HIGH_DYNAMIC_RANGE   = "(dynamic-range: high)";
 
 // ---------------------------------------------------------------------------
 // Container engines
@@ -222,6 +231,64 @@ function detectDefaultContainerEngine() {
 }
 
 // ---------------------------------------------------------------------------
+// breakpoints() — named responsive bands as one interned-token signal
+// ---------------------------------------------------------------------------
+// A breakpoint map { name: minWidthPx } compiles to ONE computed<string> whose
+// value is the active band: the name of the highest-threshold entry whose
+// (min-width: Npx) currently matches, with the SMALLEST entry acting as the
+// mobile-first floor whenever nothing larger matches. The map's own keys are
+// the tokens the computed returns, so an unchanged band yields the SAME string
+// reference and the computed's === equality makes downstream effects run
+// exactly once per real band change. We CONSTRUCT each `(min-width: Npx)` query
+// and observe it through media() — never a JS width comparison — so a band flip
+// inherits the media path's proven allocation profile and the sentinel thesis
+// ("JS never evaluates a query") holds here too.
+
+// Validate a breakpoint map and return { key, names, thresholds } sorted
+// ascending by threshold. Runs once per DISTINCT map on the cold compile path
+// (the returned computed is memoized on `key`), so the allocation here is not
+// on any hot path. Fails loud on a malformed map — an unmeasured band is a
+// silent-mismatch footgun of exactly the kind lite-media exists to prevent.
+function normalizeBreakpoints(map) {
+    if (map === null || typeof map !== "object") {
+        throw new TypeError(
+            "lite-media: breakpoints(map) requires an object of { name: minWidthPx }."
+        );
+    }
+    const names = Object.keys(map);
+    if (names.length === 0) {
+        throw new TypeError(
+            "lite-media: breakpoints(map) requires at least one { name: minWidthPx } entry."
+        );
+    }
+    const pairs = [];
+    for (let i = 0; i < names.length; i++) {
+        const name = names[i];
+        const px = map[name];
+        if (typeof px !== "number" || !Number.isFinite(px) || px < 0) {
+            throw new TypeError(
+                "lite-media: breakpoints() value for " + JSON.stringify(name)
+                + " must be a finite, non-negative pixel number, got " + String(px) + "."
+            );
+        }
+        pairs.push({ name: name, px: px });
+    }
+    // Ascending by threshold; ties keep declaration order (Array.prototype.sort
+    // is stable), so two bands at the same width resolve deterministically.
+    pairs.sort((a, b) => a.px - b.px);
+    const sortedNames = [];
+    const thresholds = [];
+    let key = "";
+    for (let i = 0; i < pairs.length; i++) {
+        sortedNames.push(pairs[i].name);
+        thresholds.push(pairs[i].px);
+        if (i > 0) key += "|";
+        key += pairs[i].name + ":" + pairs[i].px;
+    }
+    return { key: key, names: sortedNames, thresholds: thresholds };
+}
+
+// ---------------------------------------------------------------------------
 // createMedia — the fundamental factory
 // ---------------------------------------------------------------------------
 // Each instance carries its own memoization cache and options. Scoped
@@ -275,6 +342,14 @@ export function createMedia(opts) {
     // documented invariant + test, not a runtime cap. Torture: registry-bounds.
     /** @type {Map<string, any>} */
     const cache = new Map();
+    // breakpoints() memo, keyed by the canonical map key (see
+    // normalizeBreakpoints). Same registry-bounds contract as `cache`: one
+    // entry per DISTINCT breakpoint set, and an app's set of band maps is
+    // small and static. The boundary boolean signals themselves live in
+    // `cache` (breakpoints() builds them through media()), shared across every
+    // band map that reuses a threshold.
+    /** @type {Map<string, any>} */
+    const breakpointsCache = new Map();
     /** @type {WeakMap<object, Map<string, any>>} */
     const containerCache = new WeakMap();
     // Dev-only: elements already warned about a missing query container, so the
@@ -422,9 +497,44 @@ export function createMedia(opts) {
         onChange(matches === true);
     }
 
+    // breakpoints(map) -> computed<string> of the active band name. See the
+    // normalizeBreakpoints header for the model. Memoized per canonical map key.
+    function breakpoints(map) {
+        const norm = normalizeBreakpoints(map);
+        let sig = breakpointsCache.get(norm.key);
+        if (sig !== undefined) return sig;
+        const names = norm.names;
+        const thresholds = norm.thresholds;
+        // One boundary boolean per threshold, via media() so the MQL wiring,
+        // memoization and allocation profile are shared. Built once here on the
+        // cold path; a throw from media() (no matchMedia + no ssrDefault)
+        // propagates before anything is cached, same fail-loud contract.
+        const boundaries = [];
+        for (let i = 0; i < thresholds.length; i++) {
+            boundaries.push(media("(min-width: " + thresholds[i] + "px)"));
+        }
+        // Active band = highest-index boundary that matches; else the floor
+        // (index 0, the smallest threshold). The scan reads pre-built arrays
+        // and returns a stored token — no allocation on the hot read path.
+        // Index 0 is never read here: it is the unconditional floor, so we
+        // neither track it nor pay for a boundary that would only flip below
+        // the smallest declared width. `names` holds stable string references,
+        // so an unchanged band returns === the same token and computed's
+        // equality suppresses the downstream notification (one run per flip).
+        sig = computed(() => {
+            for (let i = boundaries.length - 1; i >= 1; i--) {
+                if (boundaries[i]()) return names[i];
+            }
+            return names[0];
+        });
+        breakpointsCache.set(norm.key, sig);
+        return sig;
+    }
+
     function stats() {
         return {
             watched: cache.size,
+            bands: breakpointsCache.size,
             // Only user-supplied config counts as "configured". A lazily-
             // resolved default engine (detectDefaultContainerEngine on first
             // containerMedia call) does not flip this bit — otherwise merely
@@ -439,6 +549,7 @@ export function createMedia(opts) {
     return {
         media,
         containerMedia,
+        breakpoints,
         reducedMotion()       { return media(Q_REDUCED_MOTION); },
         darkScheme()          { return media(Q_DARK_SCHEME); },
         hoverCapable()        { return media(Q_HOVER_CAPABLE); },
@@ -447,6 +558,8 @@ export function createMedia(opts) {
         moreContrast()        { return media(Q_MORE_CONTRAST); },
         reducedData()         { return media(Q_REDUCED_DATA); },
         reducedTransparency() { return media(Q_REDUCED_TRANSPARENCY); },
+        standaloneDisplay()   { return media(Q_STANDALONE_DISPLAY); },
+        highDynamicRange()    { return media(Q_HIGH_DYNAMIC_RANGE); },
         stats,
         _flip,
     };
@@ -538,6 +651,18 @@ export function containerMedia(el, query) {
     return result;
 }
 
+/**
+ * Compile a named breakpoint map `{ name: minWidthPx }` into a single
+ * computed<string> whose value is the active band name (the highest matching
+ * threshold, with the smallest entry as the mobile-first floor). Same lock
+ * semantics as media(). See createMedia().breakpoints for the model.
+ */
+export function breakpoints(map) {
+    const result = ensureDefault().breakpoints(map);
+    _defaultLocked = true;
+    return result;
+}
+
 // Preference shortcuts — delegate through the module-level media() so the
 // lock semantics apply uniformly.
 export function reducedMotion()       { return media(Q_REDUCED_MOTION); }
@@ -548,12 +673,16 @@ export function forcedColors()        { return media(Q_FORCED_COLORS); }
 export function moreContrast()        { return media(Q_MORE_CONTRAST); }
 export function reducedData()         { return media(Q_REDUCED_DATA); }
 export function reducedTransparency() { return media(Q_REDUCED_TRANSPARENCY); }
+export function standaloneDisplay()   { return media(Q_STANDALONE_DISPLAY); }
+export function highDynamicRange()    { return media(Q_HIGH_DYNAMIC_RANGE); }
 
 /** Cheap snapshot of the default instance's state. */
 export function stats() {
     const inst = _defaultInstance;
+    const snap = inst !== null ? inst.stats() : null;
     return {
-        watched: inst !== null ? inst.stats().watched : 0,
+        watched: snap !== null ? snap.watched : 0,
+        bands: snap !== null ? snap.bands : 0,
         configured: _defaultMatchMedia !== undefined
             || _defaultSsrDefault !== undefined
             || _defaultContainerEngine !== undefined,

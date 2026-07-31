@@ -277,6 +277,85 @@ gate("attach/detach churn control: a dispose that forgets untrack IS caught", ()
     return "control leaks " + r.liveAfter + " as expected (gate is load-bearing)";
 });
 
+// TIER 7 — breakpoints: cost tracks band CHANGES, not resize frames. -----------
+// The v1.2.0 claim: breakpoints() compiles to one interned-token computed, so a
+// band change is a zero-alloc token swap and a read of a stable band is a
+// zero-alloc cache hit. A resize that does not cross a threshold fires no
+// boundary event at all — there is nothing to measure between crossings — so
+// the honest per-frame proof is that a stable-band READ costs nothing.
+gate("breakpoints: 0 B retained per band change (assertAllocs maxBytesPerCall:0)", () => {
+    const { mm, flip } = makeMatchMedia();
+    const m = createMedia({ matchMedia: mm });
+    const Q_MD = "(min-width: 768px)";
+    const bp = m.breakpoints({ sm: 0, md: 768, lg: 1024 });
+    let sink = "";
+    const stop = effect(() => { sink = bp(); });
+    let v = false;
+    const one = () => { v = !v; flip(Q_MD, v); }; // sm <-> md: one band change/call
+    const r = measureAllocs(one, { iterations: 2000, batches: 8 });
+    committed["breakpoints.bytesPerBandChange"] = r.bytesPerCall;
+    assertAllocs(one, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+    stop();
+    dispose(bp);
+    dispose(m.media(Q_MD));
+    dispose(m.media("(min-width: 1024px)"));
+    dispose(m.media("(min-width: 0px)"));
+    if (sink !== (v ? "md" : "sm")) throw new Error("effect did not observe the last band");
+    return "bytesPerCall=" + r.bytesPerCall;
+});
+
+gate("breakpoints: 0 B per read of a stable band (cache hit, flat vs frame count)", () => {
+    const { mm, flip } = makeMatchMedia();
+    const m = createMedia({ matchMedia: mm });
+    flip("(min-width: 768px)", true); // land on a stable "md"
+    const bp = m.breakpoints({ sm: 0, md: 768, lg: 1024 });
+    let sink = "";
+    const stop = effect(() => { sink = bp(); }); // make the computed live + clean
+    const read = () => { sink = bp(); };          // stable-band read: cache hit
+    const r = measureAllocs(read, { iterations: 2000, batches: 8 });
+    committed["breakpoints.bytesPerStableRead"] = r.bytesPerCall;
+    assertAllocs(read, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+    stop();
+    dispose(bp);
+    dispose(m.media("(min-width: 768px)"));
+    dispose(m.media("(min-width: 1024px)"));
+    dispose(m.media("(min-width: 0px)"));
+    if (sink !== "md") throw new Error("stable band was not 'md'");
+    return "bytesPerCall=" + r.bytesPerCall;
+});
+
+gate("breakpoints: exactly one downstream run per band change (2000-cycle sweep)", () => {
+    const { mm, flip } = makeMatchMedia();
+    const m = createMedia({ matchMedia: mm });
+    const Q_MD = "(min-width: 768px)";
+    const Q_LG = "(min-width: 1024px)";
+    const bp = m.breakpoints({ sm: 0, md: 768, lg: 1024 });
+    let runs = 0;
+    let sink = "";
+    const stop = effect(() => { runs += 1; sink = bp(); });
+    const base = runs; // 1 on creation
+    const CYCLES = 2000;
+    for (let t = 0; t < CYCLES; t += 1) {
+        flip(Q_MD, true);   // sm -> md
+        flip(Q_LG, true);   // md -> lg
+        flip(Q_LG, false);  // lg -> md
+        flip(Q_MD, false);  // md -> sm
+    }
+    const expected = base + CYCLES * 4; // four real band changes per cycle
+    committed["breakpoints.runsPer2000cycles"] = runs;
+    stop();
+    dispose(bp);
+    dispose(m.media(Q_MD));
+    dispose(m.media(Q_LG));
+    dispose(m.media("(min-width: 0px)"));
+    if (runs !== expected) {
+        throw new Error("expected " + expected + " runs (1 + 4*" + CYCLES
+            + " band changes), got " + runs);
+    }
+    void sink;
+    return runs + " runs = 1 creation + " + (CYCLES * 4) + " band changes";
+});
+
 // TIER 6 — registry fail-closed: distinct queries hit a CLOSED ceiling. --------
 // The per-instance media() cache grows one signal per distinct query. It is not
 // silently unbounded: the lite-signal node budget is the ceiling, and past it

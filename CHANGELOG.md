@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.0 — breakpoints() + the last two preference signals
+
+New runtime API, all additive. Peer dependency stays `@zakkster/lite-signal ^1.3.0` (uses only the long-standing `signal` + `computed` core).
+
+### Added
+
+- **`breakpoints({ name: minWidthPx })`** — compile a named responsive-band map into a single `computed<string>` whose value is the active band: the name of the highest-threshold entry whose `(min-width: Npx)` matches, with the smallest entry acting as the mobile-first floor whenever nothing larger matches. Design consequences:
+  - **The map's own keys are the tokens.** The active band is returned by reference, so an unchanged band is `===`-stable and the computed notifies downstream **exactly once per real band change** — a resize that stays within a band costs nothing.
+  - **No width comparison in JS.** Each boundary is a constructed `(min-width: Npx)` query observed through `media()`, so a band flip inherits the media path's proven **0 B/flip** profile and the sentinel thesis ("JS never evaluates a query") holds. Boundary signals are shared with `media()` through the same cache.
+  - **Memoized** per canonical map key (any key order → one computed). Counted in `stats().bands`.
+  - **Fails loud** at compile time: a non-object, empty, or non-finite/negative-valued map throws `TypeError`; no matchMedia + no `ssrDefault` throws, and a throwing compile caches nothing. SSR collapses every boundary to `ssrDefault` — `false` yields the floor band, `true` the top band.
+  - With a literal map the returned signal's value type narrows to the union of the keys.
+- **`standaloneDisplay()`** → `(display-mode: standalone)` and **`highDynamicRange()`** → `(dynamic-range: high)` — the final two of the ten curated preference signals from the v1.0 design, matching the lazy-memoized shape of the other eight. Ten preference shortcuts now ship.
+- **Torture tiers for `breakpoints()`** — committed numbers: **0 B retained per band change**, **0 B per read of a stable band** (cache hit), and an 8001-run integrity sweep (1 creation + 8000 real band changes over 2000 cycles, one downstream run each). Wired into the existing gate; every gate still ships a control that fails it.
+
+### Notes
+
+- Bundle size is now **~2.8 KB min+gz** (was ~2.3 KB at 1.1.2), the cost of `breakpoints()`. The dev-only container-type warning is still dead-code-eliminated from a production build (`NODE_ENV=production`).
+- `stats()` gains a `bands` field (count of memoized band computeds); the registry-bounds invariant covers the breakpoints cache under the same contract as the `media()` cache.
+
 ## 1.1.2 — the footgun warning + the torture gate
 
 No new runtime API; no consumer-facing behavior change. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
