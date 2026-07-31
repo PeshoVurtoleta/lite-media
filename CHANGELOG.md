@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.2 — the footgun warning + the torture gate
+
+No new runtime API; no consumer-facing behavior change. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
+
+### Added
+
+- **Dev-only `container-type: normal` warning.** On first `containerMedia(el, query)` materialization, if neither the element nor any ancestor establishes a query container (`container-type: size | inline-size`), a one-time `console.warn` names the element and the fix. This is the classic silent-mismatch footgun: without a query container the `@container` query can never match and the signal stays `false` forever. **Warn, never mutate** — setting `container-type` changes sizing semantics and that is the caller's call. Gated on `process.env.NODE_ENV`; a production build drops it, and the production path is asserted to emit nothing.
+- **`test/torture.mjs`** — the mandated proof gate (`npm run test:torture`, run under `node --expose-gc`). Commits the package's central allocation claims as numbers via `@zakkster/lite-gc-profiler` and proves the teardown/ownership contract via `@zakkster/lite-leak`. Committed numbers: **0 B retained per media flip, 0 B per container verdict flip, 0 B per non-flip frame, 0 ArrayBuffer growth and 0 major GCs across a 100-signal × 2000-toggle storm.** Every gate ships a control that fails it. Wired into `npm run verify`.
+- **`__flipForTests(sig, matches)` / `instance._flip(sig, matches)`** — test-only seam (not part of the semver contract) that simulates a container verdict flip on the default instance by routing through the exact engine `onChange`, so container behavior is testable without a browser.
+
+### Pinned (previously undecided)
+
+- **SSR container contract.** `containerMedia()` off-DOM returns a stable `false` signal and never throws — the conservative, fail-closed verdict (a container's size cannot be known server-side; `false` renders the not-yet-sized layout). This deliberately differs from `media()`, which throws without `ssrDefault`; `ssrDefault` does not apply to the container path.
+- **Registry-bounds invariant.** The per-instance `media()` cache grows one signal per distinct query string, never per call. It is not silently unbounded: each entry is a lite-signal node, and the fixed live-node budget is the ceiling — past it, `signal()` throws a fail-closed `CapacityError` rather than corrupting. The contract (small, static query vocabulary) is now documented and tested.
+
+### Notes
+
+- The two remaining preference signals from the v1.0 design (`standaloneDisplay`, `highDynamicRange`) stay deferred to v1.2.0 per the shipped docs — eight preference shortcuts ship, unchanged.
+
 ## 1.1.0 — Engine B + createMedia
 
 ### Added

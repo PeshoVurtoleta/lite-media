@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.1.0
+ * @zakkster/lite-media v1.1.2
  *
  * Reactive media & preference signals. v1.1.0 adds:
  *   - createMedia({ matchMedia, ssrDefault, containerEngine }) — scoped
@@ -7,6 +7,10 @@
  *   - containerMedia(el, query) — Engine B: browser-native container-query
  *     verdicts via an injected `@container` rule + zero-size sentinel +
  *     `transitionrun` on a registered `<custom-ident>` custom property.
+ *
+ * v1.1.2 adds a dev-only container-type footgun warning (dropped in
+ * production), pins the SSR container contract and the registry-bounds
+ * invariant, and adds the __flipForTests container seam. No new runtime API.
  *
  * The v1.0 module-level API (`media`, `configure`, `stats`, 8 preferences,
  * `__resetForTests`) is preserved. Internally it now delegates to a lazily
@@ -43,6 +47,13 @@ const Q_REDUCED_TRANSPARENCY = "(prefers-reduced-transparency: reduce)";
 // Node/SSR gets an inert engine. Browser gets the sentinel + transitionrun
 // implementation. Tests pass a mock engine via createMedia({ containerEngine }).
 
+// SSR / no-DOM contract (pinned v1.1.2): containerMedia() off-DOM returns a
+// stable `false` signal, never throwing. A container's size cannot be known
+// server-side, and `false` ("container does not match this size") is the
+// conservative, fail-closed verdict — it renders the not-yet-sized layout.
+// This deliberately differs from media(), which throws without ssrDefault:
+// a media feature (dark mode, reduced motion) has no safe default to assume,
+// but an unmeasured container does. ssrDefault does NOT apply to this path.
 const NODE_CONTAINER_ENGINE = {
     watch(_el, _query, _onChange) {
         return { initial: false, dispose: NOOP };
@@ -50,6 +61,54 @@ const NODE_CONTAINER_ENGINE = {
 };
 
 function NOOP() {}
+
+// ---------------------------------------------------------------------------
+// Dev-only diagnostics (LM-02) — the container-type footgun warning
+// ---------------------------------------------------------------------------
+// The call site (in containerMedia) guards this with the standard inline env
+// check `typeof process !== "undefined" && process.env.NODE_ENV !==
+// "production"`, so a bundler that defines process.env.NODE_ENV folds the
+// condition to `false` and dead-code-eliminates the whole block from a
+// production build. In Node it is a cheap env read on the COLD materialization
+// path only — never on the hot signal read. We WARN, never mutate: setting
+// container-type changes sizing semantics and that is the caller's decision.
+
+// An unnamed @container query resolves against the nearest ANCESTOR that is a
+// query container (container-type: size | inline-size). If the watched element
+// and every ancestor compute to `container-type: normal`, no query container
+// exists, the query can never match, and the signal stays false forever — the
+// classic silent-mismatch footgun. Warn once per offending element.
+function warnIfNoQueryContainer(el, query, warned) {
+    if (typeof getComputedStyle !== "function") return; // SSR / no DOM: nothing to read
+    if (warned.has(el)) return;
+    let node = el;
+    let depth = 0;
+    while (node !== null && typeof node === "object" && depth < 1000) {
+        let ct = "";
+        try {
+            const cs = getComputedStyle(node);
+            if (cs !== null && typeof cs === "object"
+                && typeof cs.getPropertyValue === "function") {
+                ct = cs.getPropertyValue("container-type").trim();
+            }
+        } catch (_e) {
+            return; // getComputedStyle threw (foreign/detached node): stay silent
+        }
+        if (ct !== "" && ct !== "normal") return; // a query container exists — no footgun
+        node = (node.parentElement != null) ? node.parentElement : null;
+        depth++;
+    }
+    warned.add(el);
+    console.warn(
+        "lite-media: containerMedia() is watching an element whose computed "
+        + "container-type is 'normal' (no query container on it or its "
+        + "ancestors). The @container query " + JSON.stringify(query)
+        + " can never match, so this signal will stay false. Set "
+        + "'container-type: size' (or 'inline-size') on the element you want "
+        + "to query.",
+        el
+    );
+}
 
 // The browser engine is built as a factory so its state (stylesheet, query
 // registry) is fresh per createMedia() call — normally there's just one, but
@@ -206,10 +265,30 @@ export function createMedia(opts) {
         containerEngine = options.containerEngine;
     }
 
+    // Registry-bounds invariant (pinned v1.1.2): this per-instance Map is the
+    // ONE unbounded structure in the module — it grows by one entry per DISTINCT
+    // query string, never per call (repeat calls hit the memo). The contract is
+    // that an app's query vocabulary is small and static (a handful of
+    // breakpoints + the fixed preference set), so the Map reaches a low steady
+    // size and stops. Feeding it unbounded distinct query strings grows it
+    // without bound BY DESIGN — same call lite-router's queryParam memo made:
+    // documented invariant + test, not a runtime cap. Torture: registry-bounds.
     /** @type {Map<string, any>} */
     const cache = new Map();
     /** @type {WeakMap<object, Map<string, any>>} */
     const containerCache = new WeakMap();
+    // Dev-only: elements already warned about a missing query container, so the
+    // LM-02 warning fires at most once per element. WeakMap-adjacent (WeakSet)
+    // so it never retains an element the caller has dropped.
+    /** @type {WeakSet<object>} */
+    const warnedContainers = new WeakSet();
+    // Test-only seam (LM-03): maps a container signal to the engine onChange
+    // that drives it, so __flipForTests()/_flip() can simulate a verdict flip
+    // on the default instance (which uses the real node/browser engine, not a
+    // mock). Keyed by signal identity, off the signal's shape — same reasoning
+    // as containerDisposers below.
+    /** @type {WeakMap<any, (matches: boolean) => void>} */
+    const containerOnChange = new WeakMap();
     // Per-instance disposers keyed by signal identity. Kept off the signal
     // object so containerMedia() and media() signals share the same V8
     // hidden class — critical for monomorphic effect() call sites that read
@@ -295,6 +374,16 @@ export function createMedia(opts) {
         let sig = elCache.get(query);
         if (sig !== undefined) return sig;
 
+        // Dev-only footgun check (LM-02). The `typeof process` guard keeps
+        // unbundled browsers safe (short-circuits before touching process.env),
+        // while the adjacent `process.env.NODE_ENV !== "production"` lets a
+        // bundler fold the condition to `false` and dead-code-eliminate the
+        // whole block from a production build. Runs on first materialization
+        // for this (el, query); silent off-DOM.
+        if (typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
+            warnIfNoQueryContainer(el, query, warnedContainers);
+        }
+
         const engine = resolveContainerEngine();
         // Two-phase init: engine returns `initial` synchronously and MUST
         // NOT invoke onChange until after `watch` returns. Engines that
@@ -312,8 +401,25 @@ export function createMedia(opts) {
         // media() signals — any shared effect() reading both would go
         // polymorphic. Kept off the shape for zero divergence.
         containerDisposers.set(sig, dispose);
+        containerOnChange.set(sig, onChange);
         elCache.set(query, sig);
         return sig;
+    }
+
+    // Test-only seam (LM-03). Simulate an engine verdict flip by routing
+    // `matches` through the exact onChange the engine would call. Lets a test
+    // exercise the containerMedia -> sig.set path (including sig.set's
+    // equal-value no-op dedup) on the default instance without a real browser.
+    // Throws if `sig` is not a live container signal from THIS instance.
+    function _flip(sig, matches) {
+        const onChange = containerOnChange.get(sig);
+        if (onChange === undefined) {
+            throw new Error(
+                "lite-media: _flip() expects a container signal returned by "
+                + "this instance's containerMedia(). Unknown signal."
+            );
+        }
+        onChange(matches === true);
     }
 
     function stats() {
@@ -342,6 +448,7 @@ export function createMedia(opts) {
         reducedData()         { return media(Q_REDUCED_DATA); },
         reducedTransparency() { return media(Q_REDUCED_TRANSPARENCY); },
         stats,
+        _flip,
     };
 }
 
@@ -461,4 +568,15 @@ export function __resetForTests() {
     _defaultContainerEngine = undefined;
     _defaultLocked = false;
     _defaultInstance = null;
+}
+
+/**
+ * @internal — test-only escape hatch. NOT part of the semver contract.
+ * Simulate a container verdict flip on the default instance by routing
+ * `matches` through the engine onChange that owns `sig`. Materializing the
+ * default instance if needed; throws if `sig` is not one of its container
+ * signals. See createMedia()._flip.
+ */
+export function __flipForTests(sig, matches) {
+    return ensureDefault()._flip(sig, matches);
 }

@@ -114,6 +114,13 @@ export interface ScopedMedia {
     reducedData(): MediaSignal;
     reducedTransparency(): MediaSignal;
     stats(): Stats;
+    /**
+     * @internal — test-only escape hatch. NOT part of the semver contract.
+     * Simulate a container verdict flip by routing `matches` through the engine
+     * onChange that owns `sig`. Throws if `sig` is not a container signal of
+     * this instance.
+     */
+    _flip(sig: MediaSignal, matches: boolean): void;
 }
 
 /**
@@ -177,9 +184,16 @@ export function media(query: string): MediaSignal;
  * to an element. Cached by (element, query) pair via a WeakMap on the
  * element, so detached elements become GC-eligible with their signals.
  *
- * The container is the user's responsibility: the element must have
- * `container-type` set (`inline-size`, `size`, or `normal`), and the query
- * string must come from a bounded static set (see README).
+ * The container is the user's responsibility: the element (or an ancestor)
+ * must establish a query container via `container-type: size | inline-size`,
+ * and the query string must come from a bounded static set (see README). In
+ * development builds, if neither the element nor any ancestor is a query
+ * container, a one-time `console.warn` names the element and the fix; this is
+ * dropped in production builds and never mutates the element.
+ *
+ * Off-DOM (SSR / Node without a container engine) this returns a stable
+ * `false` signal and never throws — the conservative, fail-closed verdict.
+ * Unlike `media()`, `ssrDefault` does NOT apply to this path.
  *
  * @throws {TypeError} if `el` is null / primitive or `query` is not a string
  */
@@ -210,3 +224,12 @@ export function stats(): Stats;
  * Resets all default-instance state including the container engine slot.
  */
 export function __resetForTests(): void;
+
+/**
+ * @internal — test-only escape hatch. NOT part of the semver contract.
+ * Simulate a container verdict flip on the default instance by routing
+ * `matches` through the engine onChange that owns `sig`. Materializes the
+ * default instance if needed; throws if `sig` is not one of its container
+ * signals.
+ */
+export function __flipForTests(sig: MediaSignal, matches: boolean): void;

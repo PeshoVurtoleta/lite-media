@@ -34,7 +34,7 @@ Measured on **Apple M4 Pro (12 cores) · Node 26.3.1 · darwin/arm64**. Run `npm
 | Cold materialize (mock MQL, cache miss)           | 1.6 M ops/s       | 624 ns        |
 | `createMedia()` + 5 signals fully wired           | 674 K ops/s       | 1.48 μs       |
 
-**2.2 KB min+gz** for the full v1.1 module — Engine A, Engine B, `createMedia`, 8 preferences, `configure`, `stats`.
+**2.3 KB min+gz** for the full module — Engine A, Engine B, `createMedia`, 8 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
 
 ## Hello
 
@@ -99,7 +99,9 @@ Under the hood: lite-media injects one `@container ${query} { .__lm-s[data-q="N"
 
 **Preconditions:**
 - Query strings, like `media()`, must come from a bounded static set — they're inserted into a live stylesheet (see "Memoization contract").
-- The container must have `container-type` set. lite-media cannot set it for you (it would over-specify layout; users need control here).
+- The container must have `container-type` set. lite-media cannot set it for you (it would over-specify layout; users need control here). **In development builds** (`process.env.NODE_ENV !== "production"`), if neither the element nor any ancestor is a query container, lite-media logs a one-time `console.warn` naming the element and the fix. It **warns, never mutates**, and the warning is dropped from production builds.
+
+Off-DOM (SSR / Node without a container engine), `containerMedia()` returns a stable `false` signal and never throws — the conservative, fail-closed verdict. Unlike `media()`, `ssrDefault` does not apply to this path.
 
 Throws `TypeError` if `el` is null / primitive or `query` is not a string.
 
@@ -276,7 +278,8 @@ Cost scales with **verdict flips**, not with browser events: an event that doesn
 ## Roadmap
 
 - **v1.0.0** — Engine A: `media()`, 8 preferences, `configure()`, `stats()`.
-- **v1.1.0** — Engine B (`containerMedia`), `createMedia()` factory. *This release.*
+- **v1.1.0** — Engine B (`containerMedia`), `createMedia()` factory.
+- **v1.1.2** — Dev-only `container-type: normal` warning; SSR container contract + registry-bounds invariant pinned; `test/torture.mjs` proof gate (0 B/flip, 0 ArrayBuffer growth committed as numbers). *This release.*
 - **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token computed; reconsider `standaloneDisplay` / `highDynamicRange` based on consumer demand.
 - **v1.3.0** — Shadow DOM multi-root support for engine B; iframe / Twitch panel-mode verification.
 - **v1.4.0** — Ecosystem wiring: `lite-ambient-fx` & `lite-scratch-fx` consume `reducedMotion` via `watchEffect` rAF gate; `lite-hueforge` pairs `moreContrast` / `forcedColors` with APCA role-floor selection.
