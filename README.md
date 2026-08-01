@@ -34,7 +34,7 @@ Measured on **Apple M4 Pro (12 cores) · Node 26.3.1 · darwin/arm64**. Run `npm
 | Cold materialize (mock MQL, cache miss)           | 1.6 M ops/s       | 624 ns        |
 | `createMedia()` + 5 signals fully wired           | 674 K ops/s       | 1.48 μs       |
 
-**~2.8 KB min+gz** for the full module — Engine A, Engine B, `breakpoints`, `createMedia`, 10 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
+**~2.9 KB min+gz** for the full module — Engine A, Engine B (`containerMedia` + `containerStyle`), `breakpoints`, `createMedia`, 10 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
 
 ## Hello
 
@@ -66,7 +66,7 @@ Two consequences that fall out of that:
 1. **Correctness is free, forever.** Range syntax, `em` resolved against font-size, `dvh`, container queries, media features that haven't shipped yet — the browser handles them. lite-media doesn't parse queries, doesn't compare pixels, doesn't own an evaluator.
 2. **Zero-GC steady state.** A `change` event runs one hoisted handler that does one `sig.set(e.matches)`. lite-signal's default `Object.is` equality drops redundant events. No timers, no debounce, no allocations after the signal is created.
 
-Engine B (`containerMedia`, v1.1) follows the same rule via CSS custom-property transitions on a zero-size sentinel — the browser fires `transitionrun` when a container's verdict flips, and lite-media pushes the new boolean into the signal graph.
+Engine B (`containerMedia`, v1.1) follows the same rule via CSS custom-property transitions on a zero-size sentinel — the browser fires `transitionrun` when a container's verdict flips, and lite-media pushes the new boolean into the signal graph. `containerStyle` (v1.3) is the same engine pointed at a `style()` condition instead of a size one: still no parser, still one observed verdict.
 
 ---
 
@@ -104,6 +104,25 @@ Under the hood: lite-media injects one `@container ${query} { .__lm-s[data-q="N"
 Off-DOM (SSR / Node without a container engine), `containerMedia()` returns a stable `false` signal and never throws — the conservative, fail-closed verdict. Unlike `media()`, `ssrDefault` does not apply to this path.
 
 Throws `TypeError` if `el` is null / primitive or `query` is not a string.
+
+### `containerStyle(el: Element, prop: string, value: string): MediaSignal` — new in v1.3
+
+Return the memoized reactive boolean signal for a container **style** query: is `prop` computed to `value` on the element's nearest ancestor container? This is Engine B's `style()` class — the same sentinel + `transitionrun` machinery as `containerMedia`, pointed at a style condition.
+
+```js
+const card = document.querySelector(".card");
+// A parent sets --theme somewhere up the tree; no container-type needed.
+const dark = containerStyle(card, "--theme", "dark");
+effect(() => card.classList.toggle("card-dark", dark()));
+```
+
+`containerStyle(el, prop, value)` constructs the canonical condition `style(<prop>: <value>)` and delegates to `containerMedia`, so it shares that path's engine, memoization and disposer. A raw `containerMedia(el, "style(--theme: dark)")` with identical spacing returns the **same** cached signal.
+
+- **No `container-type` required.** Unlike a *size* query, a `style()` query resolves against any ancestor element regardless of its `container-type`, so the missing-container footgun does not apply — the dev-only warning is suppressed for it (LM-04).
+- **No namespace pollution.** lite-media registers exactly one CSS custom property (`--lm-v`). The queried property is yours; lite-media never registers it. If you want guaranteed inheritance or typing on it, register it with `CSS.registerProperty` yourself.
+- **Same SSR contract as `containerMedia`:** off-DOM it returns a stable `false` signal and never throws.
+
+Throws `TypeError` if `el` is null / primitive, `prop` is not a non-empty string, or `value` is not a string.
 
 ### `createMedia(options?): ScopedMedia` — new in v1.1
 
@@ -288,6 +307,9 @@ Or use `createMedia({ containerEngine: mockEngine })` for tests that shouldn't t
 | `containerMedia(el, q)` — cache hit      | 0 hot-path (WeakMap + Map lookup)                 |
 | `containerMedia(el, q)` — cache miss, 1st per query | 1 sentinel `<div>` + 1 handler + 1 signal + 1 CSS rule + 1 registered property (first time only) |
 | `containerMedia(el, q)` — cache miss, ≥2 per query  | 1 sentinel + 1 handler + 1 signal            |
+| `containerStyle(el, p, v)` — cache hit   | 0 hot-path (delegates to `containerMedia`)        |
+| `containerStyle(el, p, v)` — cache miss  | same as `containerMedia` + 1 constructed condition string |
+| Style verdict flip (`transitionrun`)     | 0 (identical to `containerMedia`; committed 0 B/flip) |
 | `breakpoints(map)` — cache hit           | 0 hot-path (Map lookup)                           |
 | `breakpoints(map)` — cache miss          | 1 computed + N boundary signals (via `media()`, once per threshold) |
 | Band read (`band()`) / band change       | 0 (cache hit; a change is a `===`-stable token swap) |
@@ -307,10 +329,10 @@ Cost scales with **verdict flips**, not with browser events: an event that doesn
 - **v1.0.0** — Engine A: `media()`, 8 preferences, `configure()`, `stats()`.
 - **v1.1.0** — Engine B (`containerMedia`), `createMedia()` factory.
 - **v1.1.2** — Dev-only `container-type: normal` warning; SSR container contract + registry-bounds invariant pinned; `test/torture.mjs` proof gate (0 B/flip, 0 ArrayBuffer growth committed as numbers).
-- **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token band computed (0 B/band-change committed); `standaloneDisplay()` + `highDynamicRange()` complete the ten preference signals. *This release.*
-- **v1.2.x** — `@container style()` queries via the registered-property + sentinel primitive (deferred from v1.2.0 pending its own design pass).
-- **v1.3.0** — Shadow DOM multi-root support for engine B; iframe / Twitch panel-mode verification.
-- **v1.4.0** — Ecosystem wiring: `lite-ambient-fx` & `lite-scratch-fx` consume `reducedMotion` via `watchEffect` rAF gate; `lite-hueforge` pairs `moreContrast` / `forcedColors` with APCA role-floor selection.
+- **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token band computed (0 B/band-change committed); `standaloneDisplay()` + `highDynamicRange()` complete the ten preference signals.
+- **v1.3.0** — `containerStyle(el, prop, value)` — Engine B's `@container style()` class through the same sentinel primitive (0 B/flip committed); the `container-type` footgun warning now skips `style()` queries (LM-04). *This release.*
+- **v1.4.0** — Shadow DOM multi-root support for engine B; iframe / Twitch panel-mode verification.
+- **v1.5.0** — Ecosystem wiring: `lite-ambient-fx` & `lite-scratch-fx` consume `reducedMotion` via `watchEffect` rAF gate; `lite-hueforge` pairs `moreContrast` / `forcedColors` with APCA role-floor selection.
 
 Watchlist: [CSSWG #6205](https://github.com/w3c/csswg-drafts/issues/6205) — a native `Element.matchContainer()` would collapse Engine B to a feature-detected bridge without changing the signal-graph surface.
 

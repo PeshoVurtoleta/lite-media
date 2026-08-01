@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.2.0
+ * @zakkster/lite-media v1.3.0
  *
  * Reactive media & preference signals. v1.1.0 adds:
  *   - createMedia({ matchMedia, ssrDefault, containerEngine }) — scoped
@@ -18,6 +18,15 @@
  *     zero-alloc; a band change notifies downstream exactly once.
  *   - standaloneDisplay() and highDynamicRange() — the final two of the ten
  *     curated preference signals.
+ *
+ * v1.3.0 adds:
+ *   - containerStyle(el, prop, value) — Engine B's style()-query class: a
+ *     Signal<boolean> for `@container style(<prop>: <value>)`. Constructs the
+ *     condition and routes it through the SAME sentinel engine as
+ *     containerMedia(); no new evaluator, no query parser. Unlike a size query,
+ *     a style() query needs no container-type on any ancestor, so the footgun
+ *     warning stays silent for it. The caller owns the queried property; we
+ *     never register it (only --lm-v is ours).
  *
  * The v1.0 module-level API (`media`, `configure`, `stats`, preferences,
  * `__resetForTests`) is preserved. Internally it now delegates to a lazily
@@ -88,6 +97,16 @@ function NOOP() {}
 // exists, the query can never match, and the signal stays false forever — the
 // classic silent-mismatch footgun. Warn once per offending element.
 function warnIfNoQueryContainer(el, query, warned) {
+    // LM-04: a style() container query resolves against the nearest ANCESTOR
+    // element regardless of its container-type — it does NOT need a size query
+    // container (container-type: size | inline-size). So the missing-container
+    // footgun simply does not apply, and warning would be a false positive.
+    // Skip any condition that begins with `style(`: that is every
+    // containerStyle() condition, plus any raw style() string passed straight to
+    // containerMedia(). A compound condition whose size half genuinely needs a
+    // container is expert use of the raw path and is intentionally outside this
+    // heuristic.
+    if (typeof query === "string" && query.trim().slice(0, 6) === "style(") return;
     if (typeof getComputedStyle !== "function") return; // SSR / no DOM: nothing to read
     if (warned.has(el)) return;
     let node = el;
@@ -481,6 +500,40 @@ export function createMedia(opts) {
         return sig;
     }
 
+    // containerStyle(el, prop, value) -> Signal<boolean> for a container STYLE
+    // query: is `prop` computed to `value` on el's nearest ancestor container?
+    // Constructs the canonical condition `style(<prop>: <value>)` and routes it
+    // through containerMedia — so it inherits the exact engine, memoization,
+    // disposer, _flip seam and 0-B/flip allocation profile. We CONSTRUCT the
+    // condition (never parse one), and we never register the caller's property
+    // (only --lm-v is ours), so the "no query parsing" thesis and the
+    // no-namespace-pollution rule both hold. LM-04: the footgun warning skips
+    // style() conditions, since they need no size container.
+    function containerStyle(el, prop, value) {
+        if (el === null || (typeof el !== "object" && typeof el !== "function")) {
+            throw new TypeError(
+                "lite-media: containerStyle(el, prop, value) requires an Element as first arg."
+            );
+        }
+        if (typeof prop !== "string" || prop === "") {
+            throw new TypeError(
+                "lite-media: containerStyle(el, prop, value) requires a non-empty "
+                + "property-name string (e.g. '--theme')."
+            );
+        }
+        if (typeof value !== "string") {
+            throw new TypeError(
+                "lite-media: containerStyle(el, prop, value) requires a string value "
+                + "(e.g. 'dark')."
+            );
+        }
+        // Canonical form: exactly one space after the colon. A raw
+        // containerMedia(el, 'style(--theme: dark)') with the same spacing hits
+        // the SAME cached signal; different spacing is a different cache key,
+        // which the static-query-vocabulary precondition already covers.
+        return containerMedia(el, "style(" + prop + ": " + value + ")");
+    }
+
     // Test-only seam (LM-03). Simulate an engine verdict flip by routing
     // `matches` through the exact onChange the engine would call. Lets a test
     // exercise the containerMedia -> sig.set path (including sig.set's
@@ -549,6 +602,7 @@ export function createMedia(opts) {
     return {
         media,
         containerMedia,
+        containerStyle,
         breakpoints,
         reducedMotion()       { return media(Q_REDUCED_MOTION); },
         darkScheme()          { return media(Q_DARK_SCHEME); },
@@ -647,6 +701,18 @@ export function media(query) {
  */
 export function containerMedia(el, query) {
     const result = ensureDefault().containerMedia(el, query);
+    _defaultLocked = true;
+    return result;
+}
+
+/**
+ * Materialize a reactive boolean signal for a container STYLE query
+ * (`@container style(<prop>: <value>)`), scoped to an element. Constructs the
+ * condition and delegates to containerMedia(); same lock semantics. A style()
+ * query needs no container-type on any ancestor. See createMedia().containerStyle.
+ */
+export function containerStyle(el, prop, value) {
+    const result = ensureDefault().containerStyle(el, prop, value);
     _defaultLocked = true;
     return result;
 }

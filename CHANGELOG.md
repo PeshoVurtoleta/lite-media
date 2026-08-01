@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.0 — container style() queries
+
+New runtime API, all additive. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
+
+### Added
+
+- **`containerStyle(el, prop, value)`** — a `Signal<boolean>` for a container *style* query: is `prop` computed to `value` on the element's nearest ancestor container? This completes Engine B, extending it from *size* conditions to *style* conditions. Design consequences:
+  - **No new evaluator, no parser.** `containerStyle` constructs the canonical condition `style(<prop>: <value>)` and routes it through the exact same sentinel + `transitionrun` path as `containerMedia()`. The browser evaluates the condition; lite-media only observes. A style verdict flip is the same zero-allocation `sig.set` as a size flip — committed as **0 B/flip**.
+  - **Shares the container cache.** A raw `containerMedia(el, 'style(--theme: dark)')` with identical spacing returns the *same* memoized signal.
+  - **No namespace pollution.** lite-media still registers exactly one CSS custom property (`--lm-v`). The queried property is the caller's — we never register it.
+  - **Fails closed:** a non-Element, non-string/empty property, or non-string value throws `TypeError`. Off-DOM it returns a stable `false` signal and never throws, exactly like `containerMedia()`.
+- **LM-04 — the container-type footgun warning now skips `style()` queries.** A `style()` container query resolves against any ancestor element and needs **no** `container-type: size | inline-size`, so the missing-container warning would be a false positive. It is now suppressed for any condition beginning with `style(` — covering both `containerStyle()` and a raw `style()` string passed to `containerMedia()`. A size query on the same element still warns (asserted, with a control).
+- **Torture tiers for the style path** — committed numbers: **0 B per verdict flip**, duplicate-flip dedup (exactly one effect run), and dispose-during-transition safety (no throw, no stale run), each with a load-bearing control.
+
+### Notes
+
+- Bundle size is now **~2.9 KB min+gz** (was ~2.8 KB at 1.2.0), the cost of `containerStyle()` + LM-04. The dev-only container-type warning is still dead-code-eliminated from a production build (`NODE_ENV=production`).
+
 ## 1.2.0 — breakpoints() + the last two preference signals
 
 New runtime API, all additive. Peer dependency stays `@zakkster/lite-signal ^1.3.0` (uses only the long-standing `signal` + `computed` core).

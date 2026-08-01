@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.2.0 — TypeScript declarations.
+ * @zakkster/lite-media v1.3.0 — TypeScript declarations.
  *
  * The returned signal type is deliberately narrowed to hide `.set`/`.update`
  * from callers. At runtime the object is lite-signal's `Signal<boolean>` (or,
@@ -131,6 +131,7 @@ export type CreateMediaOptions = ConfigureOptions;
 export interface ScopedMedia {
     media(query: string): MediaSignal;
     containerMedia(el: Element | object, query: string): MediaSignal;
+    containerStyle(el: Element | object, prop: string, value: string): MediaSignal;
     breakpoints<M extends BreakpointMap>(map: M): BandSignal<keyof M & string>;
     reducedMotion(): MediaSignal;
     darkScheme(): MediaSignal;
@@ -229,6 +230,27 @@ export function media(query: string): MediaSignal;
  * @throws {TypeError} if `el` is null / primitive or `query` is not a string
  */
 export function containerMedia(el: Element | object, query: string): MediaSignal;
+
+/**
+ * Return the memoized reactive boolean signal for a container STYLE query on
+ * the default instance: is `prop` computed to `value` on the element's nearest
+ * ancestor container? Constructs the canonical condition `style(<prop>: <value>)`
+ * and delegates to {@link containerMedia}, so it shares that path's engine,
+ * memoization and disposer. A raw `containerMedia(el, 'style(<prop>: <value>)')`
+ * with identical spacing returns the same cached signal.
+ *
+ * Unlike a size query, a `style()` query resolves against any ancestor and
+ * needs NO `container-type` on the element or its ancestors, so the dev-only
+ * missing-container warning never fires for it. lite-media does not register
+ * the queried property — that stays the caller's responsibility.
+ *
+ * Off-DOM this returns a stable `false` signal and never throws, exactly like
+ * `containerMedia()`.
+ *
+ * @throws {TypeError} if `el` is null / primitive, `prop` is not a non-empty
+ *   string, or `value` is not a string
+ */
+export function containerStyle(el: Element | object, prop: string, value: string): MediaSignal;
 
 /**
  * Compile a named breakpoint map into a single reactive band signal on the

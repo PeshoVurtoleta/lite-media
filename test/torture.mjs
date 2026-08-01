@@ -356,6 +356,98 @@ gate("breakpoints: exactly one downstream run per band change (2000-cycle sweep)
     return runs + " runs = 1 creation + " + (CYCLES * 4) + " band changes";
 });
 
+// TIER 8 — style queries: inherit the container path's zero-alloc profile. -----
+// containerStyle() CONSTRUCTS `style(<prop>: <value>)` and routes it through the
+// exact containerMedia() path, so a style verdict flip must be the same
+// zero-alloc sig.set as a size flip and duplicate verdicts must dedup. These
+// gates commit style-specific numbers so a future regression that special-cases
+// the style path (e.g. re-parsing or re-constructing the condition per flip)
+// fails here. The LM-04 warning-suppression behavior and ITS failing control
+// live in test/15-container-style.test.mjs (a behavioral assertion, not a
+// number). _flip works on a style signal because containerStyle delegates to
+// containerMedia, which registers the onChange seam.
+gate("style path: 0 B per verdict flip (assertAllocs maxBytesPerCall:0)", () => {
+    const m = createMedia({ ssrDefault: false }); // node inert engine
+    const sig = m.containerStyle({}, "--theme", "dark");
+    let sink = false;
+    const stop = effect(() => { sink = sig(); });
+    let v = false;
+    const one = () => { v = !v; m._flip(sig, v); };
+    const r = measureAllocs(one, { iterations: 2000, batches: 8 });
+    committed["style.bytesPerFlip"] = r.bytesPerCall;
+    assertAllocs(one, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+    stop();
+    dispose(sig);
+    if (sink !== v) throw new Error("effect did not observe the last style flip");
+    return "bytesPerCall=" + r.bytesPerCall;
+});
+
+gate("style path: duplicate flip => exactly one effect run", () => {
+    const m = createMedia({ ssrDefault: false });
+    const sig = m.containerStyle({}, "--theme", "dark");
+    let runs = 0;
+    const stop = effect(() => { runs += 1; sig(); });
+    const base = runs; // 1 on creation
+    for (let i = 0; i < 10000; i += 1) m._flip(sig, true); // all identical
+    const afterDupes = runs;
+    m._flip(sig, false); // a real change
+    const afterChange = runs;
+    stop();
+    dispose(sig);
+    if (afterDupes !== base + 1) {
+        throw new Error("duplicate style flips re-ran the effect: base=" + base
+            + " afterDupes=" + afterDupes);
+    }
+    if (afterChange !== afterDupes + 1) {
+        throw new Error("a real style verdict change did not re-run the effect");
+    }
+    return "runs: creation=1, +1 on first true, +0 across 9999 dupes, +1 on change";
+});
+
+gate("style path: dispose-during-transition is safe (no throw, no stale run)", () => {
+    const m = createMedia({ ssrDefault: false });
+    const sig = m.containerStyle({}, "--theme", "dark");
+    let runs = 0;
+    const stop = effect(() => { runs += 1; sig(); });
+    stop();            // teardown order: observer gone first
+    dispose(sig);      // then the signal
+    const runsAfterTeardown = runs;
+    // A late verdict arriving after teardown (the transitionrun-after-dispose
+    // window) must not throw and must not resurrect a downstream run.
+    m._flip(sig, true);
+    m._flip(sig, false);
+    if (runs !== runsAfterTeardown) {
+        throw new Error("a post-dispose style flip ran a downstream effect");
+    }
+    return "post-dispose flips: no throw, 0 stale runs";
+});
+
+gate("style path control: a RETAINING flip IS caught by the 0-B gate", () => {
+    // Proves the gate can fail. maxBytesPerCall:0 measures RETAINED bytes (heap
+    // delta after GC), so a transient object would be collected and measure 0 —
+    // the control must retain. This variant grows a held array per call, so heap
+    // delta per call is > 0 and assertAllocs must throw. If it does NOT throw,
+    // the gate is blind.
+    const m = createMedia({ ssrDefault: false });
+    const sig = m.containerStyle({}, "--theme", "dark");
+    const stop = effect(() => { sig(); });
+    const held = [];
+    let v = false;
+    const retaining = () => { v = !v; m._flip(sig, v); held.push(new Array(32).fill(v)); };
+    let caught = false;
+    try {
+        assertAllocs(retaining, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+    } catch (e) {
+        if (e instanceof GcInconclusiveError) throw e; // let the runner WARN
+        caught = true;
+    }
+    stop();
+    dispose(sig);
+    held.length = 0;
+    if (!caught) throw new Error("retaining control was NOT caught by the 0-B gate");
+    return "retaining flip correctly tripped maxBytesPerCall:0";
+});
+
 // TIER 6 — registry fail-closed: distinct queries hit a CLOSED ceiling. --------
 // The per-instance media() cache grows one signal per distinct query. It is not
 // silently unbounded: the lite-signal node budget is the ceiling, and past it
