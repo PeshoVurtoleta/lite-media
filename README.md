@@ -8,7 +8,7 @@
 [![npm total downloads](https://img.shields.io/npm/dt/@zakkster/lite-media?style=for-the-badge&color=blue)](https://www.npmjs.com/package/@zakkster/lite-media)
 ![Tree-Shakeable](https://img.shields.io/badge/tree--shakeable-yes-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Types-informational?style=flat-square)
-[![lite-signal peer](https://img.shields.io/npm/dependency-version/@zakkster/lite-/peer/@zakkster/lite-signal?style=for-the-badge&color=blue)](https://github.com/PeshoVurtoleta/lite-signal)
+[![lite-signal peer](https://img.shields.io/npm/dependency-version/@zakkster/lite-media/peer/@zakkster/lite-signal?style=for-the-badge&color=blue)](https://github.com/PeshoVurtoleta/lite-signal)
 ![Dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen?style=flat-square)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE.txt)
 
