@@ -22,7 +22,7 @@ import {
 } from "@zakkster/lite-gc-profiler";
 import { createLeakTracker } from "@zakkster/lite-leak";
 import { effect, dispose } from "@zakkster/lite-signal";
-import { createMedia } from "../Media.js";
+import { createMedia, __browserEngineForTests } from "../Media.js";
 
 // This file lives in test/, so `node --test` (used by `npm test`) discovers and
 // runs it too. Without --expose-gc the allocation gates cannot run, so we skip
@@ -75,6 +75,96 @@ function makeMatchMedia() {
         if (h) h(evt);
     }
     return { mm, flip };
+}
+
+// A minimal realm/DOM mock so the v1.4.0 multi-root tiers can drive the REAL
+// browser engine (via __browserEngineForTests / detectDefaultContainerEngine)
+// browserlessly. The measured 0-B loops go through _flip (no DOM touch); the mock
+// is used only on the cold setup path, so it contributes nothing to the gates.
+let mockConstructions = 0;
+let mockRegisterCalls = 0;
+let _savedDoc;
+let _savedSheet;
+let _savedGCS;
+let _savedCSS;
+let _mockDoc;
+
+function makeMockSheetClass() {
+    return class Sheet {
+        constructor() { mockConstructions += 1; this.rules = []; this.cssRules = this.rules; }
+        replaceSync(t) { this.rules.length = 0; this.rules.push(t); }
+        insertRule(r, i) { this.rules.splice(i, 0, r); return i; }
+    };
+}
+function mockComputedFor(node) {
+    if (node.__cs !== undefined) return node.__cs;
+    const cs = {
+        getPropertyValue(p) {
+            if (p === "container-type") return "inline-size";
+            if (p === "--lm-v") return node.__lmv === undefined ? "off" : node.__lmv;
+            return "";
+        },
+    };
+    node.__cs = cs;
+    return cs;
+}
+function makeMockSentinel(doc) {
+    const listeners = [];
+    return {
+        nodeType: 1, ownerDocument: doc, className: "", parentNode: null,
+        __attrs: {}, __lmv: "off", __listeners: listeners,
+        setAttribute(k, v) { this.__attrs[k] = v; },
+        addEventListener(type, h) { listeners.push({ type: type, h: h }); },
+        removeEventListener(type, h) {
+            for (let i = 0; i < listeners.length; i += 1) {
+                if (listeners[i].type === type && listeners[i].h === h) { listeners.splice(i, 1); return; }
+            }
+        },
+    };
+}
+function installMockDom() {
+    mockConstructions = 0;
+    mockRegisterCalls = 0;
+    _savedDoc = globalThis.document;
+    _savedSheet = globalThis.CSSStyleSheet;
+    _savedGCS = globalThis.getComputedStyle;
+    _savedCSS = globalThis.CSS;
+    const Sheet = makeMockSheetClass();
+    const win = { CSSStyleSheet: Sheet, getComputedStyle: mockComputedFor };
+    _mockDoc = {
+        nodeType: 9, defaultView: win, ownerDocument: null, adoptedStyleSheets: [],
+        createElement(_t) { return makeMockSentinel(_mockDoc); },
+    };
+    globalThis.document = _mockDoc;
+    globalThis.CSSStyleSheet = Sheet;
+    globalThis.getComputedStyle = mockComputedFor;
+    globalThis.CSS = { registerProperty() { mockRegisterCalls += 1; } };
+    return _mockDoc;
+}
+function restoreMockDom() {
+    try { globalThis.document = _savedDoc; }
+    finally {
+        try { globalThis.CSSStyleSheet = _savedSheet; }
+        finally {
+            try { globalThis.getComputedStyle = _savedGCS; }
+            finally { globalThis.CSS = _savedCSS; }
+        }
+    }
+}
+function makeMockShadowRoot(doc) {
+    return { nodeType: 11, host: null, ownerDocument: doc, adoptedStyleSheets: [] };
+}
+function makeMockElement(root, doc) {
+    return {
+        nodeType: 1, ownerDocument: doc, parentElement: null, children: [], __root: root,
+        getRootNode() { return this.__root; },
+        appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
+        removeChild(c) {
+            const i = this.children.indexOf(c);
+            if (i >= 0) this.children.splice(i, 1);
+            c.parentNode = null; return c;
+        },
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -446,6 +536,228 @@ gate("style path control: a RETAINING flip IS caught by the 0-B gate", () => {
     held.length = 0;
     if (!caught) throw new Error("retaining control was NOT caught by the 0-B gate");
     return "retaining flip correctly tripped maxBytesPerCall:0";
+});
+
+// TIER 9 — multi-root (v1.4.0): interleaved dispose retention across roots. -----
+// lite-leak owner attribution across the document + several shadow roots: each
+// sentinel is tracked to its watcher; a watcher whose dispose ran must have
+// untracked its sentinel. The control forgets the untrack and leaks. (The
+// tracker's cleanup closure never closes over the sentinel — the held-value
+// contract.)
+function multiRootChurn(forgetUntrack, cycles) {
+    const tracker = createLeakTracker({
+        name: "lite-media-multiroot",
+        onLeak: () => {},
+    });
+    installMockDom();
+    try {
+        const engine = __browserEngineForTests();
+        const doc = globalThis.document;
+        const roots = [doc];
+        for (let i = 0; i < 4; i += 1) roots.push(makeMockShadowRoot(doc));
+        const wnd = [];
+        for (let c = 0; c < cycles; c += 1) {
+            const root = roots[c % roots.length];
+            const host = makeMockElement(root, doc);
+            const rec = engine.watch(host, "(min-width: " + (100 + (c % 5) * 100) + "px)", NOOP_CB);
+            const sentinel = host.children[0];
+            const handle = tracker.track(sentinel, NOOP_CLEAN);
+            const d = () => { rec.dispose(); if (!forgetUntrack) tracker.untrack(handle); };
+            wnd.push(d);
+            if (wnd.length >= 8) wnd.shift()();
+        }
+        while (wnd.length > 0) wnd.shift()();
+        return { liveAfter: tracker.size(), cycles: cycles };
+    } finally {
+        restoreMockDom();
+    }
+}
+function NOOP_CB() {}
+function NOOP_CLEAN() {}
+
+gate("multi-root churn (4096): clean dispose releases every sentinel across roots", () => {
+    const N = 4096;
+    const r = multiRootChurn(false, N);
+    committed["multiroot.liveAfter"] = r.liveAfter;
+    if (r.liveAfter !== 0) {
+        throw new Error("after disposing all watchers, " + r.liveAfter + " sentinels still tracked");
+    }
+    return N + " interleaved watchers across 5 roots -> 0 after dispose";
+});
+
+gate("multi-root churn control: a dispose that forgets untrack IS caught", () => {
+    const N = 512;
+    const r = multiRootChurn(true, N);
+    if (r.liveAfter !== N) {
+        throw new Error("control did not surface the leak: liveAfter=" + r.liveAfter);
+    }
+    return "control leaks " + r.liveAfter + " as expected (gate is load-bearing)";
+});
+
+// TIER 10 — single-property invariant under multi-root. ------------------------
+// --lm-v is registered exactly ONCE per engine no matter how many roots. Control:
+// N engines register N times, proving the single-engine case genuinely deduped.
+gate("multi-root: exactly one --lm-v registration across N roots (+ control)", () => {
+    const N = 32;
+    installMockDom();
+    let oneEngine = -1;
+    let nEngines = -1;
+    try {
+        const engine = __browserEngineForTests();
+        const doc = globalThis.document;
+        for (let i = 0; i < N; i += 1) {
+            const shadow = makeMockShadowRoot(doc);
+            const host = makeMockElement(shadow, doc);
+            engine.watch(host, "(min-width: 400px)", NOOP_CB);
+        }
+        oneEngine = mockRegisterCalls;
+        // Control: a separate engine per root registers once each -> N total.
+        mockRegisterCalls = 0;
+        for (let i = 0; i < N; i += 1) {
+            const e = __browserEngineForTests();
+            const shadow = makeMockShadowRoot(doc);
+            const host = makeMockElement(shadow, doc);
+            e.watch(host, "(min-width: 400px)", NOOP_CB);
+        }
+        nEngines = mockRegisterCalls;
+    } finally {
+        restoreMockDom();
+    }
+    committed["multiroot.registerOneEngine"] = oneEngine;
+    committed["multiroot.registerNEngines"] = nEngines;
+    if (oneEngine !== 1) throw new Error("expected 1 --lm-v registration for N roots, got " + oneEngine);
+    if (nEngines !== N) throw new Error("control: expected " + N + " registrations, got " + nEngines);
+    return "one engine=" + oneEngine + " across " + N + " roots, control=" + nEngines;
+});
+
+// TIER 11 — 0 B/flip preserved inside a shadow root (via _flip seam). ----------
+// A container signal materialized on a shadow-root element (real browser engine,
+// mock DOM) must still flip at 0 B — the multi-root cold setup does not taint the
+// steady-state verdict push, which is the same sig.set as the document path.
+gate("shadow root: 0 B per verdict flip via _flip seam (maxBytesPerCall:0)", () => {
+    installMockDom();
+    try {
+        const m = createMedia(); // browser engine, auto-detected from mock globals
+        const doc = globalThis.document;
+        const shadow = makeMockShadowRoot(doc);
+        const host = makeMockElement(shadow, doc);
+        const sig = m.containerMedia(host, "(min-width: 400px)");
+        let sink = false;
+        const stop = effect(() => { sink = sig(); });
+        let v = false;
+        const one = () => { v = !v; m._flip(sig, v); };
+        const r = measureAllocs(one, { iterations: 2000, batches: 8 });
+        committed["shadow.bytesPerFlip"] = r.bytesPerCall;
+        assertAllocs(one, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+        stop();
+        dispose(sig);
+        if (sink !== v) throw new Error("effect did not observe the last flip");
+        return "bytesPerCall=" + r.bytesPerCall;
+    } finally {
+        restoreMockDom();
+    }
+});
+
+gate("shadow root control: a RETAINING flip IS caught by the 0-B gate", () => {
+    installMockDom();
+    try {
+        const m = createMedia();
+        const doc = globalThis.document;
+        const shadow = makeMockShadowRoot(doc);
+        const host = makeMockElement(shadow, doc);
+        const sig = m.containerMedia(host, "(min-width: 400px)");
+        const stop = effect(() => { sig(); });
+        const held = [];
+        let v = false;
+        const retaining = () => { v = !v; m._flip(sig, v); held.push(new Array(32).fill(v)); };
+        let caught = false;
+        try {
+            assertAllocs(retaining, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+        } catch (e) {
+            if (e instanceof GcInconclusiveError) throw e; // let the runner WARN
+            caught = true;
+        }
+        stop();
+        dispose(sig);
+        held.length = 0;
+        if (!caught) throw new Error("retaining control was NOT caught by the 0-B gate");
+        return "retaining flip correctly tripped maxBytesPerCall:0";
+    } finally {
+        restoreMockDom();
+    }
+});
+
+// TIER 12 — cold per-root setup is bounded / one-time. ------------------------
+// A known (root, query) re-watch must not build a new sheet or re-insert a rule:
+// per-root construction and insertRule are cold, first-seen-only work.
+gate("multi-root cold setup: 1000 re-watches of a known (root,query) grow nothing", () => {
+    installMockDom();
+    try {
+        const engine = __browserEngineForTests();
+        const doc = globalThis.document;
+        const shadow = makeMockShadowRoot(doc);
+        engine.watch(makeMockElement(shadow, doc), "(min-width: 400px)", NOOP_CB);
+        const sheet = shadow.adoptedStyleSheets[0];
+        const sheets0 = mockConstructions; // 1 (only this root)
+        const rules0 = sheet.rules.length;  // 2 (base + one @container)
+        for (let i = 0; i < 1000; i += 1) {
+            engine.watch(makeMockElement(shadow, doc), "(min-width: 400px)", NOOP_CB);
+        }
+        committed["multiroot.coldSheets"] = sheets0;
+        committed["multiroot.coldRules"] = rules0;
+        if (mockConstructions !== sheets0) {
+            throw new Error("re-watch built a new sheet: " + sheets0 + " -> " + mockConstructions);
+        }
+        if (sheet.rules.length !== rules0) {
+            throw new Error("re-watch inserted a rule: " + rules0 + " -> " + sheet.rules.length);
+        }
+        return "sheets stable at " + sheets0 + ", rules stable at " + rules0 + " across 1000 re-watches";
+    } finally {
+        restoreMockDom();
+    }
+});
+
+gate("multi-root cold setup control: fresh roots + a new query DO grow the counters", () => {
+    // Proves the gate above is load-bearing. The per-root memo is what keeps the
+    // counters flat; bypass it two ways and both counters must move:
+    //   (a) N fresh roots build N new sheets (coldSheets grows), and
+    //   (b) a NEW query on a known root inserts a new rule (coldRules grows).
+    installMockDom();
+    try {
+        const engine = __browserEngineForTests();
+        const doc = globalThis.document;
+        const known = makeMockShadowRoot(doc);
+        engine.watch(makeMockElement(known, doc), "(min-width: 400px)", NOOP_CB);
+        const sheets0 = mockConstructions;                           // 1
+        const rules0 = known.adoptedStyleSheets[0].rules.length;     // 2 (base + one)
+
+        // (a) fresh roots -> new sheet each time.
+        const N = 8;
+        for (let i = 0; i < N; i += 1) {
+            const fresh = makeMockShadowRoot(doc);
+            engine.watch(makeMockElement(fresh, doc), "(min-width: 400px)", NOOP_CB);
+        }
+        const grewSheets = mockConstructions - sheets0;
+
+        // (b) a new query on the KNOWN root -> new rule in its sheet.
+        engine.watch(makeMockElement(known, doc), "(min-width: 900px)", NOOP_CB);
+        const grewRules = known.adoptedStyleSheets[0].rules.length - rules0;
+
+        committed["multiroot.coldSheetsFreshRoots"] = grewSheets;
+        committed["multiroot.coldRulesNewQuery"] = grewRules;
+        if (grewSheets !== N) {
+            throw new Error("control expected +" + N + " sheets for N fresh roots, got +" + grewSheets);
+        }
+        if (grewRules !== 1) {
+            throw new Error("control expected +1 rule for a new query, got +" + grewRules);
+        }
+        // Both growths would violate the main gate's flatness invariants
+        // (constructions === 1, rules === 2) — that is exactly the point.
+        return "fresh roots grew sheets by " + grewSheets
+            + ", a new query grew rules by " + grewRules + " (flatness is load-bearing)";
+    } finally {
+        restoreMockDom();
+    }
 });
 
 // TIER 6 — registry fail-closed: distinct queries hit a CLOSED ceiling. --------

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.4.0 — multi-root Engine B (shadow DOM + cross-realm iframe)
+
+M2 hardening. **No public API change** — `containerMedia()` and `containerStyle()` keep their exact signatures. This is a transparent correctness/robustness release, bumped to a minor per the roadmap because it adds a capability class. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
+
+### Fixed
+
+- **Engine B now materializes against the element's own root.** Before 1.4.0 the single constructed `@container` sheet was adopted only into `document.adoptedStyleSheets`. A sentinel inside a **shadow root** (shadow encapsulation) or a **cross-realm iframe document** therefore never saw `--lm-v` flip, and its signal sat silently stuck at `false`. The engine now resolves `el.getRootNode()` and keeps **one constructed sheet per root**, adopted into *that* root and built in *that* root's own realm (`root.defaultView.CSSStyleSheet`), so adoption never throws across realms. This is the headline iframe / Twitch panel-mode case.
+
+### Changed / internal
+
+- **Per-root sheet state** lives in a `WeakMap<root, { doc, view, sheet, ids }>` — a WeakMap, not a Map, so a detached shadow root or a dead iframe document is never pinned for the page lifetime (the leak law forbids that retention class). A live root keeps its sheet (don't-rebuild); a dropped root is collected with it.
+- **The single-property invariant holds across roots.** `--lm-v` is still registered exactly once per engine (`CSS.registerProperty`), and the query→id map stays global so the `data-q` selector is identical in every root. Only *which* ids' rules are already inserted is tracked per root.
+- **Fail-closed per root.** A root with no realm, no constructable sheet, no `adoptedStyleSheets` support, or a throwing construct/adopt degrades to a stuck-`false` signal — memoized, never retried, never thrown. Never adopts a wrong-realm sheet (the global `CSSStyleSheet` fallback is allowed only for the main document's own realm).
+- **Roots-bounds invariant.** A root's sheet and its inserted rules are **retained** on last dispose (bounded by concurrent root count, not watcher count) — mirroring the `media()` registry-bounds decision. Dispose still removes every sentinel and detaches every listener.
+
+### Tests + torture
+
+- New `test/16-browser-engine.test.mjs` and `test/17-multiroot-dispose.test.mjs` drive the real engine against a realm/DOM mock: document-root regression floor, shadow-root adoption (control: the document is *not* touched), cross-realm construction into a hostile realm (control: a wrong-realm sheet is rejected), one `--lm-v` across N roots, one sheet per root, and interleaved multi-root create/dispose (retained per-root rules, no cross-root bleed, every sentinel + listener cleaned).
+- New torture tiers, committed: multi-root interleaved dispose retention (lite-leak owner attribution, with a forget-untrack control), exactly-one `--lm-v` across N roots (control: N engines register N times), **0 B/flip preserved inside a shadow root** via the `_flip` seam (with a retaining control that trips it), and cold per-root setup is one-time (1000 known re-watches build no sheet and insert no rule). Every gate ships a control that fails it.
+
+### Notes
+
+- Bundle size is now **~3.2 KB min+gz** (3,265 B, esbuild + gzip -9, lite-signal external) — up from ~2.9 KB at 1.3.0, the cost of the per-root resolution.
+- **Non-goal:** the root is resolved once, at an element's first `watch()`, and memoized per element. Relocating an element to a different root (document or shadow root) after its signal exists is not re-resolved — dispose and re-create the signal if an element moves roots.
+
 ## 1.3.0 — container style() queries
 
 New runtime API, all additive. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.

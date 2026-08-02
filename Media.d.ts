@@ -1,5 +1,11 @@
 /**
- * @zakkster/lite-media v1.3.0 — TypeScript declarations.
+ * @zakkster/lite-media v1.4.0 — TypeScript declarations.
+ *
+ * v1.4.0 makes Engine B multi-root (shadow DOM + cross-realm iframe). This is a
+ * transparent correctness release: NO public signature changed — containerMedia()
+ * and containerStyle() are identical, and a container element inside a shadow root
+ * or a foreign realm now materializes against that root's own sheet instead of
+ * sitting stuck-false.
  *
  * The returned signal type is deliberately narrowed to hide `.set`/`.update`
  * from callers. At runtime the object is lite-signal's `Signal<boolean>` (or,
@@ -204,7 +210,7 @@ export function configure(options: ConfigureOptions | null | undefined): void;
 
 /**
  * Return the memoized reactive boolean signal for a CSS media query on the
- * default instance. Same query string ⇒ same signal instance.
+ * default instance. Same query string => same signal instance.
  *
  * @throws {Error} if no matchMedia is available and no `ssrDefault` was configured
  * @throws {TypeError} if the configured factory returns a non-MQL-shaped object
@@ -309,3 +315,11 @@ export function __resetForTests(): void;
  * signals.
  */
 export function __flipForTests(sig: MediaSignal, matches: boolean): void;
+
+/**
+ * @internal — test-only escape hatch. NOT part of the semver contract.
+ * Returns a fresh browser container engine (the same factory the browser
+ * environment picks), so the multi-root watch/dispose contract can be exercised
+ * directly against a mock DOM. There is no public container-dispose API.
+ */
+export function __browserEngineForTests(): ContainerEngine;

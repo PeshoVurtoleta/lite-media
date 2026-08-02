@@ -34,7 +34,7 @@ Measured on **Apple M4 Pro (12 cores) · Node 26.3.1 · darwin/arm64**. Run `npm
 | Cold materialize (mock MQL, cache miss)           | 1.6 M ops/s       | 624 ns        |
 | `createMedia()` + 5 signals fully wired           | 674 K ops/s       | 1.48 μs       |
 
-**~2.9 KB min+gz** for the full module — Engine A, Engine B (`containerMedia` + `containerStyle`), `breakpoints`, `createMedia`, 10 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
+**~3.2 KB min+gz** (3,265 B, esbuild + `gzip -9`, lite-signal external) for the full module — Engine A, Engine B (`containerMedia` + `containerStyle`, multi-root as of v1.4.0), `breakpoints`, `createMedia`, 10 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
 
 ## Hello
 
@@ -102,6 +102,8 @@ Under the hood: lite-media injects one `@container ${query} { .__lm-s[data-q="N"
 - The container must have `container-type` set. lite-media cannot set it for you (it would over-specify layout; users need control here). **In development builds** (`process.env.NODE_ENV !== "production"`), if neither the element nor any ancestor is a query container, lite-media logs a one-time `console.warn` naming the element and the fix. It **warns, never mutates**, and the warning is dropped from production builds.
 
 Off-DOM (SSR / Node without a container engine), `containerMedia()` returns a stable `false` signal and never throws — the conservative, fail-closed verdict. Unlike `media()`, `ssrDefault` does not apply to this path.
+
+**Multi-root (v1.4.0).** The engine resolves `el.getRootNode()` and keeps one constructed `@container` sheet **per root** — the main document, a **shadow root**, or a **cross-realm iframe document** — adopted into that root and built in that root's own realm. An element inside a shadow root or an embedded iframe (e.g. a Twitch panel) now materializes against its own root's sheet instead of sitting silently stuck at `false`. `--lm-v` is still registered exactly once, the per-root sheet map is a `WeakMap` (detached roots are never pinned), and a root that can't be styled fails closed to a stuck-`false` signal — never throws, never adopts a wrong-realm sheet. The root is resolved once, at the element's first `watch()`, and memoized per element; relocating an element to a different root after its signal exists is a non-goal — dispose and re-create the signal if an element moves roots.
 
 Throws `TypeError` if `el` is null / primitive or `query` is not a string.
 
@@ -330,8 +332,9 @@ Cost scales with **verdict flips**, not with browser events: an event that doesn
 - **v1.1.0** — Engine B (`containerMedia`), `createMedia()` factory.
 - **v1.1.2** — Dev-only `container-type: normal` warning; SSR container contract + registry-bounds invariant pinned; `test/torture.mjs` proof gate (0 B/flip, 0 ArrayBuffer growth committed as numbers).
 - **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token band computed (0 B/band-change committed); `standaloneDisplay()` + `highDynamicRange()` complete the ten preference signals.
-- **v1.3.0** — `containerStyle(el, prop, value)` — Engine B's `@container style()` class through the same sentinel primitive (0 B/flip committed); the `container-type` footgun warning now skips `style()` queries (LM-04). *This release.*
-- **v1.4.0** — Shadow DOM multi-root support for engine B; iframe / Twitch panel-mode verification.
+- **v1.3.0** — `containerStyle(el, prop, value)` — Engine B's `@container style()` class through the same sentinel primitive (0 B/flip committed); the `container-type` footgun warning now skips `style()` queries (LM-04).
+- **v1.4.0** — Multi-root Engine B: shadow DOM + cross-realm iframe (one constructed sheet per root, adopted into that root, built in that root's realm); one `--lm-v` across roots, fail-closed per root, interleaved-dispose torture committed. *This release.*
+- **v1.4.1** — bfcache / `pagehide` lifecycle audit (a pinned answer per event).
 - **v1.5.0** — Ecosystem wiring: `lite-ambient-fx` & `lite-scratch-fx` consume `reducedMotion` via `watchEffect` rAF gate; `lite-hueforge` pairs `moreContrast` / `forcedColors` with APCA role-floor selection.
 
 Watchlist: [CSSWG #6205](https://github.com/w3c/csswg-drafts/issues/6205) — a native `Element.matchContainer()` would collapse Engine B to a feature-detected bridge without changing the signal-graph surface.

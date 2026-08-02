@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-media",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Reactive media, container-query, and preference signals for @zakkster/lite-signal. Wraps window.matchMedia and the browser's native @container evaluator in Signal<boolean>. Zero-GC steady state, scoped instances via createMedia().",
   "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
   "license": "MIT",

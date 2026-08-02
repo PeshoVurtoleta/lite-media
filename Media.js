@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.3.0
+ * @zakkster/lite-media v1.4.0
  *
  * Reactive media & preference signals. v1.1.0 adds:
  *   - createMedia({ matchMedia, ssrDefault, containerEngine }) — scoped
@@ -27,6 +27,16 @@
  *     a style() query needs no container-type on any ancestor, so the footgun
  *     warning stays silent for it. The caller owns the queried property; we
  *     never register it (only --lm-v is ours).
+ *
+ * v1.4.0 (M2 hardening) makes Engine B multi-root. containerMedia() /
+ *   containerStyle() now resolve el.getRootNode() and keep one constructed
+ *   @container sheet PER root (main document, shadow root, or cross-realm iframe
+ *   document), adopted into that root and built in that root's own realm. Before,
+ *   the single document-adopted sheet left any sentinel inside a shadow root or a
+ *   foreign realm stuck-false. --lm-v is still registered exactly once across all
+ *   roots and the query->id map stays global. No API change (strict correctness).
+ *   A root that can't be styled fails closed to a stuck-false signal, never
+ *   throwing. The per-root sheet map is a WeakMap so detached roots are not pinned.
  *
  * The v1.0 module-level API (`media`, `configure`, `stats`, preferences,
  * `__resetForTests`) is preserved. Internally it now delegates to a lazily
@@ -79,6 +89,16 @@ const NODE_CONTAINER_ENGINE = {
 };
 
 function NOOP() {}
+
+// Constant-false verdict reader, swapped in (cold, once per watch) when a realm's
+// getComputedStyle is unavailable or throws, so the hot read body never grows.
+function FALSE_READER() { return false; }
+
+// Shared, frozen empty id-set for the fail-closed root stub. A null/foreign root
+// returns an inert stub that never reaches ensureRule (watch() bails on
+// state.doc === null), so it needs no per-root Set — one immutable instance
+// avoids a needless cold-path allocation. Frozen so a stray add() fails loud.
+const EMPTY_IDS = Object.freeze(new Set());
 
 // ---------------------------------------------------------------------------
 // Dev-only diagnostics (LM-02) — the container-type footgun warning
@@ -138,17 +158,46 @@ function warnIfNoQueryContainer(el, query, warned) {
     );
 }
 
-// The browser engine is built as a factory so its state (stylesheet, query
-// registry) is fresh per createMedia() call — normally there's just one, but
-// tests can construct isolated instances.
+// Sentinel base rule, shared verbatim by every per-root sheet: zero-size,
+// invisible, never interactive. --lm-v defaults to `off` outside any matching
+// @container. Hoisted to a module const so replaceSync establishes the same base
+// rule in each root's own constructed sheet without re-materializing the literal.
+const LM_BASE_CSS =
+    ".__lm-s{--lm-v:off;position:absolute;inset:0;width:0;height:0;"
+    + "pointer-events:none;visibility:hidden;overflow:hidden;contain:strict}";
+
+// The browser engine is built as a factory so its state (query registry, per-root
+// sheets) is fresh per createMedia() call — normally there's just one, but tests
+// can construct isolated instances.
+//
+// Multi-root (v1.4.0): a container element can live in the main document, in a
+// shadow root, or in a cross-realm iframe document. A single document-adopted
+// sheet only styles the main document, so a sentinel inside a shadow root or a
+// foreign realm would never see --lm-v flip and its signal would sit stuck-false.
+// The engine therefore resolves el.getRootNode() and keeps ONE constructed sheet
+// per root, adopted into THAT root, built in THAT root's own realm.
 function makeBrowserContainerEngine() {
-    /** @type {CSSStyleSheet | null} */
-    let sheet = null;
-    let injected = false;
+    // Global (per-instance) query -> id map + counter: one stable data-q id per
+    // query string across every root, so the selector is identical everywhere and
+    // --lm-v is registered exactly once. Only WHICH ids' rules are already
+    // inserted is tracked per root (state.ids).
     /** @type {Map<string, number>} */
     const queryIds = new Map();
     let counter = 0;
     let propertyRegistered = false;
+
+    // Roots-bounds invariant (v1.4.0; mirrors createMedia's registry-bounds
+    // invariant on `cache`): this holds one sheet state per LIVE root the engine
+    // has styled. It is a WeakMap, NOT a Map, on purpose — a strong Map would pin
+    // every detached shadow root and dead iframe document for the page lifetime, a
+    // retention class the leak law forbids. Nothing iterates it, so a WeakMap is
+    // strictly correct: a live root keeps its sheet (the don't-rebuild behavior),
+    // a dropped root is collected together with its sheet. A root's sheet and its
+    // inserted rules are RETAINED on last dispose (never removed on teardown; a
+    // re-watch of that root reuses the same sheet) — bounded by concurrent root
+    // count, not by watcher count.
+    /** @type {WeakMap<object, { doc: any, view: any, sheet: any, ids: Set<number> }>} */
+    const roots = new WeakMap();
 
     function ensureRegisteredProperty() {
         if (propertyRegistered) return;
@@ -169,57 +218,130 @@ function makeBrowserContainerEngine() {
         }
     }
 
-    function ensureStylesheet() {
-        if (injected) return;
-        injected = true;
-        ensureRegisteredProperty();
-        sheet = new CSSStyleSheet();
-        // Sentinel base: zero-size, invisible, never interactive.
-        // --lm-v defaults to `off` outside any matching @container.
-        sheet.replaceSync(
-            ".__lm-s{--lm-v:off;position:absolute;inset:0;width:0;height:0;"
-            + "pointer-events:none;visibility:hidden;overflow:hidden;contain:strict}"
-        );
-        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    // Resolve the DOM root (Document | ShadowRoot) that styles `el`. getRootNode()
+    // is the shadow-aware path; ownerDocument is the fallback for a host without
+    // it. A non-object result fails closed to null.
+    function resolveRoot(el) {
+        const root = (typeof el.getRootNode === "function")
+            ? el.getRootNode()
+            : (el.ownerDocument || null);
+        return (root !== null && typeof root === "object") ? root : null;
     }
 
-    function ensureRule(query) {
+    // Get-or-create the per-root sheet state, memoized in `roots`. sheet===null
+    // memoizes the fail-closed verdict for a root we can't fully style (Ctor
+    // unavailable, no adoptedStyleSheets support, or a throwing construct/adopt):
+    // never retried, never thrown. doc===null means there's no styleable document
+    // at all (null/foreign root) — watch() then returns an inert stub without
+    // touching the DOM. Every risky step is wrapped so a hostile/foreign root
+    // degrades to a stuck-false signal instead of throwing out of watch().
+    function getRootState(root) {
+        if (root === null || typeof root !== "object") {
+            return { doc: null, view: null, sheet: null, ids: EMPTY_IDS };
+        }
+        let state = roots.get(root);
+        if (state !== undefined) return state;
+        const doc = (root.nodeType === 9) ? root : (root.ownerDocument || null);
+        const view = (doc !== null && typeof doc === "object") ? doc.defaultView : null;
+        // Construct the sheet in the ROOT's OWN realm so adoption can't throw
+        // across realms. The global CSSStyleSheet fallback is allowed ONLY for the
+        // main document's own realm — never adopt a wrong-realm sheet.
+        let Ctor = (view && typeof view.CSSStyleSheet === "function")
+            ? view.CSSStyleSheet
+            : null;
+        if (Ctor === null && doc !== null
+            && typeof globalThis !== "undefined"
+            && doc === globalThis.document
+            && typeof globalThis.CSSStyleSheet === "function") {
+            Ctor = globalThis.CSSStyleSheet;
+        }
+        let sheet = null;
+        if (Ctor !== null && ("adoptedStyleSheets" in root)) {
+            try {
+                const s = new Ctor();
+                s.replaceSync(LM_BASE_CSS); // establishes this root's base rule
+                // The exact multi-root fix: adopt into the ROOT, not the document.
+                root.adoptedStyleSheets = [...root.adoptedStyleSheets, s];
+                sheet = s;
+            } catch (_e) {
+                sheet = null; // fail closed for this root
+            }
+        }
+        state = { doc: doc, view: view, sheet: sheet, ids: new Set() };
+        roots.set(root, state);
+        return state;
+    }
+
+    // Ensure the @container rule for `query` exists in THIS root's sheet. The id
+    // is assigned GLOBALLY (a fail-closed root still burns a stable id, so the
+    // selector matches once the root becomes styleable elsewhere). The id is
+    // marked seen BEFORE insertRule so a throwing insert never retry-storms on a
+    // later watch of the same root+query.
+    function ensureRule(state, query) {
         let id = queryIds.get(query);
-        if (id !== undefined) return id;
-        id = ++counter;
-        queryIds.set(query, id);
-        // Inside a matching @container, flip verdict to `on` with an
-        // allow-discrete transition so `transitionrun` fires per flip.
-        // 0.001ms is deliberately below-frame — verdict propagates immediately;
-        // we don't need duration, we need the event.
-        const rule = "@container " + query + "{"
-            + ".__lm-s[data-q=\"" + id + "\"]{--lm-v:on;"
-            + "transition:--lm-v 0.001ms allow-discrete}}";
-        sheet.insertRule(rule, sheet.cssRules.length);
+        if (id === undefined) {
+            id = ++counter;
+            queryIds.set(query, id);
+        }
+        if (state.sheet !== null && !state.ids.has(id)) {
+            state.ids.add(id);
+            // Inside a matching @container, flip verdict to `on` with an
+            // allow-discrete transition so `transitionrun` fires per flip.
+            // 0.001ms is deliberately below-frame — verdict propagates
+            // immediately; we don't need duration, we need the event.
+            const rule = "@container " + query + "{"
+                + ".__lm-s[data-q=\"" + id + "\"]{--lm-v:on;"
+                + "transition:--lm-v 0.001ms allow-discrete}}";
+            try {
+                state.sheet.insertRule(rule, state.sheet.cssRules.length);
+            } catch (_e) {
+                // A rejected rule (bad query, rule-count ceiling) leaves the
+                // verdict false for this root+query. Already marked seen: no retry.
+            }
+        }
         return id;
     }
 
     return {
         watch(el, query, onChange) {
-            ensureStylesheet();
-            const id = ensureRule(query);
+            ensureRegisteredProperty();
+            const root = resolveRoot(el);
+            const state = getRootState(root);
+            if (state.doc === null) {
+                // Fail-closed root: no realm/document to style against. Stuck
+                // false, no DOM touched.
+                return { initial: false, dispose: NOOP };
+            }
+            const id = ensureRule(state, query);
 
-            const sentinel = document.createElement("div");
+            const sentinel = state.doc.createElement("div");
             sentinel.className = "__lm-s";
             sentinel.setAttribute("data-q", String(id));
             el.appendChild(sentinel);
 
-            const cs = getComputedStyle(sentinel);
+            let cs = null;
+            try {
+                // Method form so a brand-checking engine keeps its `this` (window);
+                // fall back to the global only when the realm has no view.
+                cs = state.view
+                    ? state.view.getComputedStyle(sentinel)
+                    : getComputedStyle(sentinel);
+            } catch (_e) {
+                cs = null;
+            }
             function read() {
                 return cs.getPropertyValue("--lm-v").trim() === "on";
             }
-            const initial = read();
+            // Cold swap: a realm with no usable getComputedStyle reads constant
+            // false, so the hot read body above never grows a guard.
+            const verdict = (cs !== null) ? read : FALSE_READER;
+            const initial = verdict();
 
             // The browser fires `transitionrun` for a discrete-transition
             // property when its value changes. That's our verdict-flip
             // signal — one event, one push.
             function handler(e) {
-                if (e.propertyName === "--lm-v") onChange(read());
+                if (e.propertyName === "--lm-v") onChange(verdict());
             }
             sentinel.addEventListener("transitionrun", handler);
 
@@ -774,4 +896,16 @@ export function __resetForTests() {
  */
 export function __flipForTests(sig, matches) {
     return ensureDefault()._flip(sig, matches);
+}
+
+/**
+ * @internal — test-only escape hatch. NOT part of the semver contract.
+ * Returns a fresh browser container engine (the same factory
+ * detectDefaultContainerEngine picks in a browser realm), so the v1.4.0
+ * multi-root watch/dispose contract can be exercised directly against a mock
+ * DOM. There is no public container-dispose API; this is the seam the multi-root
+ * dispose tests use, mirroring __flipForTests / __resetForTests.
+ */
+export function __browserEngineForTests() {
+    return makeBrowserContainerEngine();
 }
