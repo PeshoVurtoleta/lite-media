@@ -211,6 +211,15 @@
         .verdict.match   { color: var(--fg-hot); border-color: var(--fg); }
         .verdict.nomatch { color: var(--fg-dim); }
 
+        /* --- S11 · reduced-motion rAF gate --- */
+        .s11-canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 1px solid var(--grid);
+            background: var(--bg);
+        }
+
         /* --- S5 · container query playground --- */
         .s5-wrap {
             container-type: inline-size;
@@ -312,6 +321,7 @@
         <button data-scene="s8">S8 · CONTAINERSTYLE</button>
         <button data-scene="s9">S9 · SHADOW ROOT</button>
         <button data-scene="s10">S10 · BFCACHE</button>
+        <button data-scene="s11">S11 · REDUCED MOTION</button>
     </nav>
 
     <main>
@@ -566,10 +576,33 @@
                 </div>
             </div>
         </section>
+
+        <!-- S11 · Reduced-motion rAF gate (v1.5.0 recipe) -->
+        <section id="s11" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>Reduced-motion rAF gate — the v1.5.0 recipe, live</h2>
+                    <p class="dim">One <code>effect</code> gates a <code>requestAnimationFrame</code> loop on <code>reducedMotion()</code>. Preference OFF: the bars run. Preference ON: the loop <em>parks</em> — the in-flight frame is cancelled and none is scheduled, so it costs nothing. Flip it back and the loop resumes. Shares the same signal as S1's <code>rm</code> toggle (memoized).</p>
+                    <canvas id="s11-canvas" class="s11-canvas" width="640" height="180"></canvas>
+                    <div id="s11-verdict" class="verdict match mt">— RUNNING —</div>
+                    <div class="controls mt">
+                        <div class="toggle" id="s11-toggle"><span>Prefer reduced motion (park the loop)</span><span class="kbd">CLICK</span></div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <h2>State</h2>
+                    <div class="stat"><span class="k">loop state</span><span class="v" id="s11-state">running</span></div>
+                    <div class="stat"><span class="k">frames drawn</span><span class="v" id="s11-frames">0</span></div>
+                    <div class="stat"><span class="k">raf() scheduled</span><span class="v" id="s11-rafs">0</span></div>
+                    <div class="stat"><span class="k">cancel() calls</span><span class="v" id="s11-cancels">0</span></div>
+                    <div class="panel mt"><p class="dim">The counters are injected wrappers around the real <code>requestAnimationFrame</code> / <code>cancelAnimationFrame</code> — exactly the seam the torture gate drives. A park cancels once and schedules nothing; frames-drawn stops advancing while parked.</p></div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script type="module">
-        import { effect } from "@zakkster/lite-signal";
+        import { effect, onCleanup } from "@zakkster/lite-signal";
         import {
             configure, media, containerMedia, containerStyle, breakpoints,
             createMedia, stats,
@@ -1059,6 +1092,79 @@
             s10Refresh();
         });
         s10Refresh();
+
+        // ==========================================================
+        // S11 · reduced-motion rAF gate (v1.5.0 recipe, live)
+        // ==========================================================
+        const $s11Canvas  = document.getElementById("s11-canvas");
+        const $s11Verdict = document.getElementById("s11-verdict");
+        const $s11Toggle  = document.getElementById("s11-toggle");
+        const $s11State   = document.getElementById("s11-state");
+        const $s11Frames  = document.getElementById("s11-frames");
+        const $s11Rafs    = document.getElementById("s11-rafs");
+        const $s11Cancels = document.getElementById("s11-cancels");
+        const s11Ctx = $s11Canvas.getContext("2d");
+        const S11_W = $s11Canvas.width;
+        const S11_H = $s11Canvas.height;
+        const S11_BARS = 32;
+        const S11_BARW = S11_W / S11_BARS;
+        const S11_TAU = Math.PI * 2;
+        const S11_CS = getComputedStyle(document.documentElement);
+        const S11_BG = S11_CS.getPropertyValue("--bg").trim() || "#061510";
+        const S11_FG = S11_CS.getPropertyValue("--fg").trim() || "#57c58c";
+
+        // Injected raf/cancel wrappers -- the same seam the torture gate drives,
+        // over the real requestAnimationFrame, with display counters.
+        let s11RafCount = 0;
+        let s11CancelCount = 0;
+        function s11RafFn(cb) { s11RafCount += 1; return requestAnimationFrame(cb); }
+        function s11CancelFn(id) { s11CancelCount += 1; cancelAnimationFrame(id); }
+
+        let s11FrameId = 0;
+        let s11FrameCount = 0;
+        let s11Phase = 0;
+
+        // Zero-reflow frame body: canvas 2D writes never touch layout, and the
+        // only DOM text writes are throttled to ~10Hz behind a frame-count mask.
+        function s11Draw() {
+            s11FrameCount += 1;
+            s11Phase = (s11Phase + 0.06) % S11_TAU;
+            s11Ctx.fillStyle = S11_BG;
+            s11Ctx.fillRect(0, 0, S11_W, S11_H);
+            s11Ctx.fillStyle = S11_FG;
+            for (let i = 0; i < S11_BARS; i += 1) {
+                const a = Math.sin(s11Phase + i * 0.4);
+                const h = (a * 0.5 + 0.5) * (S11_H - 8) + 4;
+                s11Ctx.fillRect(i * S11_BARW + 1, S11_H - h, S11_BARW - 2, h);
+            }
+            if ((s11FrameCount & 7) === 0) {
+                $s11Frames.textContent = s11FrameCount.toString();
+                $s11Rafs.textContent = s11RafCount.toString();
+                $s11Cancels.textContent = s11CancelCount.toString();
+            }
+            s11FrameId = s11RafFn(s11Draw);
+        }
+
+        // Memoized -- the SAME signal S1's rm toggle drives.
+        const s11RmSig = media(S1_QUERY_BY_KEY.rm);
+
+        // The v1.5.0 recipe, verbatim: one effect gates the loop on reducedMotion().
+        effect(() => {
+            const parked = s11RmSig(); // read INSIDE the effect body so it is tracked
+            $s11Verdict.textContent = parked ? "— PARKED —" : "— RUNNING —";
+            $s11Verdict.classList.toggle("match", !parked);
+            $s11Verdict.classList.toggle("nomatch", parked);
+            $s11State.textContent = parked ? "parked (reduced-motion)" : "running";
+            $s11Toggle.classList.toggle("on", parked);
+            if (parked) { s11CancelFn(s11FrameId); return; }
+            s11FrameId = s11RafFn(s11Draw);
+            onCleanup(() => s11CancelFn(s11FrameId));
+        });
+
+        $s11Toggle.addEventListener("pointerdown", () => {
+            const q = S1_QUERY_BY_KEY.rm;
+            mockFlip(q, !mockRegistry.get(q).matches);
+        });
     </script>
 </body>
 </html>

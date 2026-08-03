@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.4.1
+ * @zakkster/lite-media v1.5.0
  *
  * Reactive media & preference signals. v1.1.0 adds:
  *   - createMedia({ matchMedia, ssrDefault, containerEngine }) -- scoped
@@ -49,6 +49,12 @@
  *   set path a real event uses. Every read is fail-closed and page-lifetime;
  *   nothing is torn down. The hot read/flip paths are unchanged and stay
  *   0-alloc. No new public API (the seam is the internal __pageshowForTests).
+ *
+ * v1.5.0 (M3 ecosystem wiring) adds NOTHING to the runtime -- this file's
+ *   minified output is identical to 1.4.1. The release ships a tested, copy-
+ *   pasteable reduced-motion rAF-gate recipe (reducedMotion() + lite-signal
+ *   effect({ scheduler })) for consumers already in the signal graph, its
+ *   conformance + torture gates, and the vendor-vs-depend decision record.
  *
  * The v1.0 module-level API (`media`, `configure`, `stats`, preferences,
  * `__resetForTests`) is preserved. Internally it now delegates to a lazily

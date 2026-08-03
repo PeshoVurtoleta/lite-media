@@ -21,7 +21,7 @@ import {
     GcBudgetError, GcInconclusiveError,
 } from "@zakkster/lite-gc-profiler";
 import { createLeakTracker } from "@zakkster/lite-leak";
-import { effect, dispose } from "@zakkster/lite-signal";
+import { effect, onCleanup, dispose } from "@zakkster/lite-signal";
 import { createMedia, __browserEngineForTests } from "../Media.js";
 
 // This file lives in test/, so `node --test` (used by `npm test`) discovers and
@@ -964,6 +964,206 @@ gate("bfcache live-set control: undisposed records keep _liveSize non-zero (trip
     } finally {
         restoreMockDom();
     }
+});
+
+// TIER 14 -- reduced-motion rAF gate (v1.5.0 ecosystem recipe). -----------------
+// Media.js is UNCHANGED in 1.5.0; this tier commits the numbers a consumer
+// inherits by copy-pasting the documented recipe: gate a requestAnimationFrame
+// loop on reducedMotion() through a single effect. raf/cancel are INJECTED
+// counters (a zero-alloc single-slot fake scheduler), never globalThis-patched --
+// a global patch would hide the SSR / no-rAF fail-closed path the recipe
+// documents. reducedMotion() is media("(prefers-reduced-motion: reduce)") here,
+// read directly inside the effect body so the dependency is tracked.
+function makeRafScheduler() {
+    let rafCount = 0;
+    let cancelCount = 0;
+    let nextId = 0;
+    let pendingId = -1;
+    let pendingCb = null;
+    return {
+        raf(cb) { rafCount += 1; nextId += 1; pendingId = nextId; pendingCb = cb; return nextId; },
+        cancel(id) { cancelCount += 1; if (id === pendingId) { pendingId = -1; pendingCb = null; } },
+        tick() { const cb = pendingCb; pendingId = -1; pendingCb = null; if (cb) cb(); },
+        pending() { return pendingCb !== null; },
+        rafs() { return rafCount; },
+    };
+}
+// The recipe, verbatim. A park (reducedMotion ON) cancels the in-flight frame;
+// resuming re-schedules; dispose fires onCleanup which cancels the last frame.
+function makeRafGate(reducedMotion, sched) {
+    let id = 0;
+    let frames = 0;
+    function loop() { frames += 1; id = sched.raf(loop); }
+    const stop = effect(() => {
+        if (reducedMotion()) { sched.cancel(id); return; }
+        id = sched.raf(loop);
+        onCleanup(() => sched.cancel(id));
+    });
+    return { stop, frames: () => frames };
+}
+// Control: same shape but NEVER cancels (no branch-cancel, no onCleanup). A park
+// leaves the in-flight frame live, so ticks keep the loop running -- proving the
+// cancel is load-bearing for the framesWhileParked claim.
+function makeRafGateNoCancel(reducedMotion, sched) {
+    let id = 0;
+    let frames = 0;
+    function loop() { frames += 1; id = sched.raf(loop); }
+    const stop = effect(() => {
+        if (reducedMotion()) { return; } // parks by not rescheduling; never cancels
+        id = sched.raf(loop);
+    });
+    return { stop, frames: () => frames };
+}
+const Q_RM = "(prefers-reduced-motion: reduce)";
+
+gate("rAF gate: 0 B per reduced-motion flip + 0 major GC + 0 frames while parked", () => {
+    const { mm, flip } = makeMatchMedia();
+    const m = createMedia({ matchMedia: mm });
+    const rm = m.media(Q_RM);
+    const sched = makeRafScheduler();
+    const g = makeRafGate(rm, sched);
+
+    // (a) 0 B RETAINED per flip. Toggling reduced-motion re-runs the gate effect
+    //     (cancel/raf + a transient onCleanup closure); all of it is transient, so
+    //     the retained delta per flip is 0.
+    let v = false;
+    const one = () => { v = !v; flip(Q_RM, v); };
+    const r = measureAllocs(one, { iterations: 2000, batches: 8 });
+    committed["rafGate.bytesPerFlip"] = r.bytesPerCall;
+    assertAllocs(one, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+
+    // (b) 0 major GC across a 20000-flip storm (profiler window, as TIER 3).
+    const prof = new GcProfiler();
+    prof.start();
+    for (let t = 0; t < 20000; t += 1) { v = !v; flip(Q_RM, v); }
+    prof.forceSettle();
+    const summary = prof.summary();
+    prof.stop();
+    committed["rafGate.majors"] = summary.gc ? summary.gc.major : null;
+    const res = checkNoGc(summary, { maxMajor: 0 });
+
+    // (c) 0 frames while parked. Force a running gate with one frame in flight,
+    //     then park and tick 1000 frames -- none must run.
+    flip(Q_RM, true); flip(Q_RM, false); // deterministic: end running, one frame in flight
+    flip(Q_RM, true);                     // park -> cancel
+    const framesBefore = g.frames();
+    for (let i = 0; i < 1000; i += 1) sched.tick();
+    const framesWhileParked = g.frames() - framesBefore;
+    committed["rafGate.framesWhileParked"] = framesWhileParked;
+
+    g.stop();
+    dispose(rm);
+    if (res.verdict === "fail") {
+        throw new Error("major GC during reduced-motion flip storm: " + JSON.stringify(res.violations));
+    }
+    if (framesWhileParked !== 0) {
+        throw new Error("loop ran " + framesWhileParked + " frames while parked");
+    }
+    return "bytesPerFlip=" + r.bytesPerCall
+        + " majors=" + (summary.gc ? summary.gc.major : "?")
+        + " framesWhileParked=" + framesWhileParked;
+});
+
+gate("rAF gate control: a RETAINING flip IS caught by the 0-B gate", () => {
+    // Proves the 0-B gate above can fail. maxBytesPerCall:0 measures RETAINED
+    // bytes, so a transient object collects and measures 0 -- the control must
+    // RETAIN. This grows a held array per flip, so heap delta per call is > 0.
+    const { mm, flip } = makeMatchMedia();
+    const m = createMedia({ matchMedia: mm });
+    const rm = m.media(Q_RM);
+    const sched = makeRafScheduler();
+    const g = makeRafGate(rm, sched);
+    const held = [];
+    let v = false;
+    const retaining = () => { v = !v; flip(Q_RM, v); held.push(new Array(32).fill(v)); };
+    let caught = false;
+    try {
+        assertAllocs(retaining, { maxBytesPerCall: 0 }, { iterations: 2000, batches: 8 });
+    } catch (e) {
+        if (e instanceof GcInconclusiveError) throw e; // let the runner WARN
+        caught = true;
+    }
+    g.stop();
+    dispose(rm);
+    held.length = 0;
+    if (!caught) throw new Error("retaining flip was NOT caught by the 0-B gate");
+    return "retaining flip correctly tripped maxBytesPerCall:0";
+});
+
+gate("rAF gate control: omitting cancel keeps the loop running while parked (>= 1000 frames)", () => {
+    // Proves framesWhileParked is load-bearing. Without the cancel (branch + the
+    // onCleanup), a park leaves the in-flight frame live and the loop re-schedules
+    // itself on every tick, so 1000 ticks run 1000 frames.
+    const { mm, flip } = makeMatchMedia();
+    const m = createMedia({ matchMedia: mm });
+    const rm = m.media(Q_RM);
+    const sched = makeRafScheduler();
+    const g = makeRafGateNoCancel(rm, sched);
+    flip(Q_RM, true); flip(Q_RM, false); // running, one frame in flight
+    flip(Q_RM, true);                     // "park" -- no cancel, frame survives
+    const before = g.frames();
+    for (let i = 0; i < 1000; i += 1) sched.tick();
+    const parked = g.frames() - before;
+    committed["rafGate.framesWhileParkedNoCancel"] = parked;
+    g.stop();
+    dispose(rm);
+    if (parked < 1000) {
+        throw new Error("no-cancel control ran only " + parked + " frames (expected >= 1000)");
+    }
+    return "no-cancel control ran " + parked + " frames while parked (cancel is load-bearing)";
+});
+
+// TIER 15 -- reduced-motion rAF gate live-set retention. ------------------------
+// Each attach/park/dispose cycle tracks one owned per-gate resource (released by
+// the effect's onCleanup) via lite-leak. The check is deterministic: tracker.size()
+// counts tracked-not-yet-untracked resources, so a dispose that untracks returns
+// the size to 0 the instant it runs -- no GC-finalization timing. The held-value
+// contract holds: the onCleanup closure closes over the tracker handle, never over
+// the tracked sentinel.
+function rafGateChurn(forgetUntrack, N) {
+    let leaks = 0;
+    const tracker = createLeakTracker({ name: "lite-media-rafgate", onLeak: () => { leaks += 1; } });
+    const { mm, flip } = makeMatchMedia();
+    const m = createMedia({ matchMedia: mm });
+    const rm = m.media(Q_RM);
+    for (let i = 0; i < N; i += 1) {
+        flip(Q_RM, false);                 // start running
+        const sched = makeRafScheduler();
+        let id = 0;
+        const sentinel = { i: i };         // owned per-gate resource; nothing else closes over it
+        const handle = tracker.track(sentinel, NOOP_CLEAN);
+        function loop() { id = sched.raf(loop); }
+        const stop = effect(() => {
+            if (rm()) { sched.cancel(id); return; }
+            id = sched.raf(loop);
+            onCleanup(() => { sched.cancel(id); if (!forgetUntrack) tracker.untrack(handle); });
+        });
+        flip(Q_RM, true);                  // park -> onCleanup fires (cancel + untrack unless forgotten)
+        stop();                            // dispose the gate effect
+    }
+    const liveAfter = tracker.size();
+    dispose(rm);
+    return { liveAfter: liveAfter, N: N, leaks: leaks };
+}
+
+gate("rAF gate live-set (4096): park+dispose untracks every gate resource", () => {
+    const N = 4096;
+    const r = rafGateChurn(false, N);
+    committed["rafGate.liveSetAfter"] = r.liveAfter;
+    if (r.liveAfter !== 0) {
+        throw new Error("after park+dispose, " + r.liveAfter + " gate resources still tracked");
+    }
+    return N + " attach/park/dispose cycles -> tracker size 0";
+});
+
+gate("rAF gate live-set control: a dispose that forgets untrack IS caught", () => {
+    const N = 512;
+    const r = rafGateChurn(true, N);
+    committed["rafGate.liveSetUndisposed"] = r.liveAfter;
+    if (r.liveAfter !== N) {
+        throw new Error("control did not surface the leak: liveAfter=" + r.liveAfter);
+    }
+    return "control leaks " + r.liveAfter + " as expected (live-set gate is load-bearing)";
 });
 
 // TIER 6 -- registry fail-closed: distinct queries hit a CLOSED ceiling. --------

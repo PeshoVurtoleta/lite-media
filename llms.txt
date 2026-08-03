@@ -24,7 +24,12 @@
 > pageshow listener that (on persisted restore only) re-reads every mql.matches
 > (Engine A) and every live sentinel verdict (Engine B) and re-pushes the fresh
 > boolean through the same sig.set a real event uses. Fail-closed per entry,
-> page-lifetime, 0 B on an unchanged restore. No public API change.
+> page-lifetime, 0 B on an unchanged restore. No public API change. v1.5.0 is
+> ecosystem wiring only: the Media.js runtime is unchanged from 1.4.1 (the sole
+> edit is the version-header comment; the min+gz bundle is byte-identical);
+> it ships a tested, copy-pasteable reduced-motion rAF-gate recipe for consumers
+> already in the signal graph (reducedMotion() + effect({ scheduler })), its
+> conformance + torture gates, and the vendor-vs-depend decision record.
 
 ## Design in one line
 
@@ -63,7 +68,7 @@ media, container AND style paths, 0 B per breakpoints band change, 0 B per
 stable-band read, 0 ArrayBuffer growth, 0 major GC across a 100-signal x
 2000-toggle storm. Every gate ships a control that fails it.
 
-## Public API (v1.4.1)
+## Public API (v1.5.0)
 
     import { signal, effect } from "@zakkster/lite-signal";
     import {
@@ -75,7 +80,8 @@ stable-band read, 0 ArrayBuffer growth, 0 major GC across a 100-signal x
         __resetForTests, __flipForTests, __pageshowForTests,
     } from "@zakkster/lite-media";
 
-The public runtime surface is unchanged from v1.4.0. v1.4.1 adds only the
+The public runtime surface is unchanged from v1.4.0; v1.5.0 adds nothing to it
+(ecosystem-wiring docs + recipe only). v1.4.1 added only the
 internal __pageshowForTests(persisted) seam (mirrors __flipForTests): synthesize
 a pageshow with the given persisted flag on the default instance and run the
 exact gated resync body, so a bfcache restore is testable with no real browser.
@@ -84,7 +90,7 @@ nothing new to call from application code.
 
 ### media(query: string): MediaSignal
 
-Memoized reactive boolean for a CSS media query. Same query string ⇒ same
+Memoized reactive boolean for a CSS media query. Same query string => same
 signal instance. Signal has (): boolean tracked read, .peek(): boolean
 untracked read, .subscribe(fn): dispose. .set / .update hidden by TypeScript.
 
@@ -102,7 +108,7 @@ Cached per (element, query) pair via a WeakMap keyed on the element.
 Under the hood: lite-media injects one @container rule per unique query
 into a shared stylesheet, appends a zero-size sentinel div to the container,
 and listens for transitionrun on a registered <custom-ident> CSS custom
-property (--lm-v) that flips off↔on when the container matches.
+property (--lm-v) that flips off<->on when the container matches.
 
 Preconditions (BOTH must hold):
 1. The element (or an ancestor) establishes a query container via
@@ -430,10 +436,14 @@ Not a runtime error, just graceful degradation.
           Engine A mql verdict and every Engine B sentinel verdict through the
           same sig.set a real event uses. 0 B on an unchanged restore, fail-closed
           per entry; bfcache resync + live-set retention torture committed.
-          [current]
-- 1.5.0 — Ecosystem wiring: lite-ambient-fx & lite-scratch-fx consume
-          reducedMotion via watchEffect rAF gate; lite-hueforge pairs
-          moreContrast / forcedColors with APCA role-floor selection.
+- 1.5.0 — Ecosystem wiring (Option A): a tested, copy-pasteable reduced-motion
+          rAF-gate recipe for consumers already in the signal graph -- reducedMotion()
+          + effect({ scheduler }) replaces ad-hoc checks -- with conformance +
+          torture gates (0 B/flip, 0 major GC, 0 frames while parked, live-set 0)
+          and the vendor-vs-depend decision record. Media.js runtime is unchanged
+          from 1.4.1 (min+gz bundle byte-identical); lite-ambient-fx / lite-scratch-fx KEEP vendoring
+          their own prefers-reduced-motion check (zero-dep identity); lite-media
+          does not become their runtime dependency. [current]
 
 Watchlist: CSSWG #6205 (native Element.matchContainer). If it ships, engine
 B collapses to a feature-detected bridge with unchanged signal-graph surface.
@@ -442,11 +452,13 @@ B collapses to a feature-detected bridge with unchanged signal-graph surface.
 
     Media.js       — single-file ESM implementation (~1032 lines)
     Media.d.ts     — TypeScript declarations
-    test/01…19-*.test.mjs      — 196 tests across 19 files
-    test/torture.mjs — the proof gate (node --expose-gc): committed 0-B numbers
+    test/01…20-*.test.mjs      — 205 tests across 20 files
+    test/torture.mjs — the proof gate (node --expose-gc): committed 0-B numbers,
+                      incl. the v1.5.0 reduced-motion rAF-gate tiers
     bench/bench.mjs — machine-stamped benchmark harness
     demo/index.html — oscilloscope demo (preferences, breakpoints, containerStyle,
-                      shadow-root containerMedia, bfcache resync)
+                      shadow-root containerMedia, bfcache resync, reduced-motion
+                      rAF gate)
     README.md, llms.txt, LICENSE.txt, CHANGELOG.md
 
 ## Install

@@ -76,7 +76,7 @@ Engine B (`containerMedia`, v1.1) follows the same rule via CSS custom-property 
 
 ### `media(query: string): MediaSignal`
 
-Return the memoized reactive boolean signal for a CSS media query. Same query string ⇒ same signal instance. Reads (`s()`, `s.peek()`, `s.subscribe()`) behave as lite-signal defines. The `.d.ts` narrows the return type to hide `.set` / `.update`.
+Return the memoized reactive boolean signal for a CSS media query. Same query string => same signal instance. Reads (`s()`, `s.peek()`, `s.subscribe()`) behave as lite-signal defines. The `.d.ts` narrows the return type to hide `.set` / `.update`.
 
 ```js
 const wide = media("(min-width: 60rem)");
@@ -330,6 +330,56 @@ Cost scales with **verdict flips**, not with browser events: an event that doesn
 
 ---
 
+## Reduced-motion rAF gate — new in v1.5.0
+
+If you are **already in the lite-signal graph** (already depending on `@zakkster/lite-signal`), gate an animation loop on `reducedMotion()` with a single `effect`. When the user prefers reduced motion the loop **parks** (the in-flight frame is cancelled, no new frame is scheduled); when they flip it back off the loop **resumes**; on dispose the effect's `onCleanup` cancels the last frame. No per-frame preference check, no ad-hoc `matchMedia(...).addEventListener` bookkeeping.
+
+```js
+import { effect, onCleanup } from "@zakkster/lite-signal";
+import { reducedMotion } from "@zakkster/lite-media";
+
+const raf = requestAnimationFrame;
+const cancel = cancelAnimationFrame;
+
+function startAnimation(draw) {
+    const prefersReduced = reducedMotion(); // memoized MediaSignal; read () inside the effect
+    let id = 0;
+    function loop(t) { draw(t); id = raf(loop); }
+
+    // One effect. reducedMotion() is READ inside so the dependency is tracked.
+    return effect(() => {
+        if (prefersReduced()) { cancel(id); return; } // park: cancel, schedule nothing
+        id = raf(loop);
+        onCleanup(() => cancel(id));                   // fires on re-run AND on dispose
+    });
+}
+
+const stop = startAnimation(drawFrame);
+// ...later: stop();  // tears the loop down, no orphaned frame callback
+```
+
+Why an `effect` and not a per-frame `if (reducedMotion())`:
+
+- **Fail-closed for free.** Off-DOM / SSR / any environment without `matchMedia`, `reducedMotion()` fails closed (see `media()`); the loop never starts. Do **not** monkeypatch `globalThis.requestAnimationFrame` to test this — inject `raf`/`cancel` so the no-rAF path stays visible.
+- **Zero allocation per flip.** Toggling the preference re-runs the effect (one `cancel`/`raf` + one transient `onCleanup` closure) and retains **0 B** — committed by `test/torture.mjs` (`rafGate.bytesPerFlip = 0`, `rafGate.majors = 0` over a 20 000-flip storm).
+- **Zero frames while parked.** Once parked, no scheduler ticks run the loop (`rafGate.framesWhileParked = 0`); a control that omits the `cancel` runs ≥ 1000 frames, proving the cancel is load-bearing.
+- **No leak on dispose.** 4096 attach/park/dispose cycles return the live-set to 0 (`rafGate.liveSetAfter = 0`).
+
+The recipe is proven in `test/20-raf-gate.test.mjs` (conformance) and the rAF-gate torture tiers.
+
+---
+
+## Ecosystem — vendor vs depend
+
+lite-media does **not** become a runtime dependency of packages whose identity is *zero dependencies*.
+
+- **`lite-ambient-fx` and `lite-scratch-fx` keep vendoring their own `prefers-reduced-motion` check.** Each already reads `matchMedia("(prefers-reduced-motion: reduce)")` behind its own guard; the core stays zero-dependency, and any heavier capability lives behind an optional peer / separate export path rather than a hard dependency on lite-media. Turning lite-media into their runtime dep would trade their zero-dep guarantee for a convenience they do not need.
+- **The rAF-gate recipe above is for consumers already in the signal graph.** If a package already depends on `@zakkster/lite-signal`, `reducedMotion()` + `effect({ scheduler })` replaces its ad-hoc preference bookkeeping with a tracked, zero-GC, fail-closed gate — at no new dependency cost, because lite-signal is already present.
+
+In short: depend on lite-media when you are already reactive; vendor a one-line `matchMedia` check when your identity is zero-dep.
+
+---
+
 ## Roadmap
 
 - **v1.0.0** — Engine A: `media()`, 8 preferences, `configure()`, `stats()`.
@@ -338,8 +388,8 @@ Cost scales with **verdict flips**, not with browser events: an event that doesn
 - **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token band computed (0 B/band-change committed); `standaloneDisplay()` + `highDynamicRange()` complete the ten preference signals.
 - **v1.3.0** — `containerStyle(el, prop, value)` — Engine B's `@container style()` class through the same sentinel primitive (0 B/flip committed); the `container-type` footgun warning now skips `style()` queries (LM-04).
 - **v1.4.0** — Multi-root Engine B: shadow DOM + cross-realm iframe (one constructed sheet per root, adopted into that root, built in that root's realm); one `--lm-v` across roots, fail-closed per root, interleaved-dispose torture committed.
-- **v1.4.1** — bfcache / `pageshow` lifecycle audit: a persisted `pageshow` re-pins every Engine A `mql` verdict and every Engine B sentinel verdict through the same `sig.set` a real event uses. 0 B on an unchanged restore, fail-closed per entry; bfcache resync + live-set retention torture committed. *This release.*
-- **v1.5.0** — Ecosystem wiring: `lite-ambient-fx` & `lite-scratch-fx` consume `reducedMotion` via `watchEffect` rAF gate; `lite-hueforge` pairs `moreContrast` / `forcedColors` with APCA role-floor selection.
+- **v1.4.1** — bfcache / `pageshow` lifecycle audit: a persisted `pageshow` re-pins every Engine A `mql` verdict and every Engine B sentinel verdict through the same `sig.set` a real event uses. 0 B on an unchanged restore, fail-closed per entry; bfcache resync + live-set retention torture committed.
+- **v1.5.0** — Ecosystem wiring (Option A): a tested, copy-pasteable **reduced-motion rAF-gate** recipe for consumers already in the signal graph (`reducedMotion()` + `effect({ scheduler })`), its conformance + torture gates (0 B/flip, 0 major GC, 0 frames while parked, live-set 0), and the vendor-vs-depend decision record. **Media.js runtime is unchanged from 1.4.1** (only the version-header comment changed; min+gz bundle byte-identical). *This release.*
 
 Watchlist: [CSSWG #6205](https://github.com/w3c/csswg-drafts/issues/6205) — a native `Element.matchContainer()` would collapse Engine B to a feature-detected bridge without changing the signal-graph surface.
 

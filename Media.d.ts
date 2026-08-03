@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.4.1 -- TypeScript declarations.
+ * @zakkster/lite-media v1.5.0 -- TypeScript declarations.
  *
  * v1.4.0 makes Engine B multi-root (shadow DOM + cross-realm iframe). This is a
  * transparent correctness release: NO public signature changed -- containerMedia()

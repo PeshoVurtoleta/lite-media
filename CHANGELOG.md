@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.0 — ecosystem wiring (Option A): reduced-motion rAF-gate recipe
+
+**Runtime identical to 1.4.1.** This release ships the reduced-motion rAF-gate recipe, its conformance + torture gates, the vendor-vs-depend decision record, and a demo scene. No new public API, no new export, no change to the shipped runtime — the only edit to `Media.js` is its version-header comment (stripped by minify), so the **minified bundle is byte-identical to 1.4.1 at 3,529 B** min+gz. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
+
+### Added
+
+- **Reduced-motion rAF-gate recipe** (docs). A tested, copy-pasteable pattern for consumers **already in the lite-signal graph**: gate a `requestAnimationFrame` loop on `reducedMotion()` with a single `effect`. On the preference flipping ON the loop **parks** (cancels the in-flight frame, schedules nothing); flipping OFF **resumes**; `dispose()` fires `onCleanup` which cancels the last frame. `reducedMotion()` is read **inside** the effect body so the dependency is tracked; `raf`/`cancel` are **injected**, never `globalThis`-patched (a global patch would hide the SSR / no-rAF fail-closed path the recipe documents). See README "Reduced-motion rAF gate".
+- **Ecosystem decision record** (docs). Packages with a zero-dependency identity (`lite-ambient-fx`, `lite-scratch-fx`) **keep vendoring** their own `prefers-reduced-motion` `matchMedia` check — the core stays zero-dep, any heavier capability lives behind an optional peer / separate export path; lite-media does **not** become their runtime dependency. The rAF-gate recipe is for consumers who already depend on `@zakkster/lite-signal`, where `reducedMotion()` + `effect({ scheduler })` replaces ad-hoc checks at no new dependency cost. See README "Ecosystem — vendor vs depend".
+- **Demo scene** (`demo/index.html`, dev-only, not shipped): reduced-motion gating a live rAF animation (running bars vs parked), in the existing oscilloscope theme.
+
+### Tests + torture
+
+- New `test/20-raf-gate.test.mjs` (9 tests): the recipe under a local `makeGate` helper driven by an **injected** fake scheduler and an injected `matchMedia` (scoped `createMedia()` instance for isolation). Asserts the transition sequence — no rAF scheduled while reduced-motion is ON at creation; the loop starts on the flip to OFF; the loop **parks** (cancel fires, no further raf) on the flip to ON; a second OFF resumes; `dispose()` tears everything down with no orphaned frame callback (`onCleanup` fired) — plus duplicate-event and dispose-while-parked safety.
+- New torture tiers, committed: **`rafGate.bytesPerFlip = 0`** and **`rafGate.majors = 0`** over ~2000 iters × 8 batches / a 20,000-flip storm; **`rafGate.framesWhileParked = 0`**; a **retaining** control trips the 0-B gate; a **no-cancel** control yields `framesWhileParked = 1000` (proving the cancel is load-bearing); and a **live-set** tier — 4096 attach/park/dispose cycles return the tracker to **0** (deterministic seam, not GC-timing), with a **forget-dispose** control leaving 512.
+
+### Notes
+
+- The only change to `Media.js` is its version-header comment (`v1.4.1` -> `v1.5.0`), keeping the version in sync across `package.json`, `Media.js`, and `Media.d.ts` per the packaging convention. The comment is stripped by minification, so the runtime is unchanged and the min+gz bundle is byte-identical to 1.4.1.
+
 ## 1.4.1 — bfcache / pageshow lifecycle audit
 
 M2 finish. **No public API change** — every existing signature is identical. This is a transparent correctness release: a page restored from the back/forward cache now re-pins its signals instead of holding a stale answer. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
