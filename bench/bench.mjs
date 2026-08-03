@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media — benchmark suite
+ * @zakkster/lite-media -- benchmark suite
  *
  * Machine-stamped, warm-up-then-measure, multi-run with IQR spread flag.
  * Prints a spec-style table + machine-readable JSON summary. The JSON
@@ -53,7 +53,7 @@ function summarize(samples) {
  * counted). Repeats `runs` times to compute a median.
  */
 function bench(name, fn, iterations, { warm = 3, runs = 7 } = {}) {
-    // Warm-up (GC between runs — cache-miss scenarios need node-pool recycling)
+    // Warm-up (GC between runs -- cache-miss scenarios need node-pool recycling)
     for (let w = 0; w < warm; w++) { fn(iterations); tryGC(); }
     const samples = [];
     for (let r = 0; r < runs; r++) {
@@ -131,11 +131,11 @@ function scenarioEventThroughput() {
     const mm = makeMockMM();
     configure({ matchMedia: mm.matchMedia });
     const s = media("(x)");
-    // One subscriber. Measures browser-event → set → effect chain.
+    // One subscriber. Measures browser-event -> set -> effect chain.
     let runs = 0;
     const stop = effect(() => { s(); runs++; });
     const baseline = runs;
-    const result = bench("change event → sig.set → effect (1 subscriber)", (n) => {
+    const result = bench("change event -> sig.set -> effect (1 subscriber)", (n) => {
         for (let i = 0; i < n; i++) mm.flip("(x)", (i & 1) === 1);
     }, 100_000);
     stop();
@@ -177,7 +177,7 @@ function scenarioCreateMedia() {
 }
 
 function scenarioCreateMediaMaterialize() {
-    // Same single-shot pattern as scenarioCacheMiss — see comment there.
+    // Same single-shot pattern as scenarioCacheMiss -- see comment there.
     const N = 50;
     tryGC();
     const t0 = performance.now();
@@ -240,7 +240,7 @@ function fmtOps(v) {
 
 function fmtNs(v) {
     if (v < 1000) return v.toFixed(1) + " ns";
-    if (v < 1_000_000) return (v / 1000).toFixed(2) + " μs";
+    if (v < 1_000_000) return (v / 1000).toFixed(2) + " µs";
     return (v / 1_000_000).toFixed(2) + " ms";
 }
 
@@ -264,7 +264,7 @@ function printTable(results) {
         const row = rows[i];
         const line = row.map((cell, j) => String(cell).padEnd(widths[j])).join("  ");
         console.log("  " + line);
-        if (i === 0) console.log("  " + widths.map((w) => "─".repeat(w)).join("  "));
+        if (i === 0) console.log("  " + widths.map((w) => "-".repeat(w)).join("  "));
     }
 }
 
@@ -274,9 +274,9 @@ function printTable(results) {
 
 const machine = machineStamp();
 if (!JSON_ONLY) {
-    console.log("@zakkster/lite-media — benchmark v1");
-    console.log(`  machine   ${machine.node} · ${machine.platform}/${machine.arch}`);
-    console.log(`  cpu       ${machine.cpu} · ${machine.cores} cores`);
+    console.log("@zakkster/lite-media -- benchmark v1");
+    console.log(`  machine   ${machine.node} - ${machine.platform}/${machine.arch}`);
+    console.log(`  cpu       ${machine.cpu} - ${machine.cores} cores`);
     console.log(`  gc hint   ${HAS_GC ? "yes (--expose-gc)" : "no"}`);
     console.log(`  ts        ${machine.ts}`);
     console.log("");
@@ -307,6 +307,6 @@ if (JSON_ONLY) {
     console.log("headline");
     console.log(`  media() cache hit         ${fmtOps(cacheHit.opsPerSec)}  (${fmtNs(cacheHit.nsPerOp)} per read)`);
     console.log(`  Signal read (call-style)  ${fmtOps(sigRead.opsPerSec)}  (${fmtNs(sigRead.nsPerOp)} per read)`);
-    console.log(`  event → set → effect      ${fmtOps(evt.opsPerSec)}  (${fmtNs(evt.nsPerOp)} per flip)`);
+    console.log(`  event -> set -> effect      ${fmtOps(evt.opsPerSec)}  (${fmtNs(evt.nsPerOp)} per flip)`);
     console.log(`  fanout to 100 subscribers ${fmtNs(fanout.nsPerOp)} per flip  (${fmtNs(fanout.nsPerSubscriber)} per subscriber)`);
 }

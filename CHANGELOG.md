@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.4.1 — bfcache / pageshow lifecycle audit
+
+M2 finish. **No public API change** — every existing signature is identical. This is a transparent correctness release: a page restored from the back/forward cache now re-pins its signals instead of holding a stale answer. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
+
+### Fixed
+
+- **A signal no longer sits stale after a bfcache restore.** A page restored from the back/forward cache does **not** re-fire matchMedia `change` or container `transitionrun`, so a signal could hold an answer that went stale while the page was frozen (dark mode toggled, the viewport resized, a container crossed a breakpoint). Each instance now lazily attaches **one** `pageshow` listener (on its first `media()` / `containerMedia()`) that no-ops unless `event.persisted === true`, then re-reads every watched `mql.matches` (Engine A) and every live sentinel's computed `--lm-v` (Engine B) and re-pushes the fresh boolean through the **same** `sig.set` path a real event uses.
+
+### Changed / internal
+
+- **Engine A** gains a per-instance `mqls` Map — a sibling of the `cache`, keyed by the same query string, holding each live `MediaQueryList`. Populated on `media()`'s **cold path only**; the hot cache-hit read is untouched. `_resync()` re-reads each `mql.matches` and re-pushes it. Bounded exactly like `cache` (one entry per distinct query). `ssrDefault` signals have no `mql` and are skipped.
+- **Engine B** gains a per-engine `live` Set of `{ verdict, onChange }` records. `watch()` adds; `dispose()` **deletes first**, always. `engine.resync()` re-reads each live verdict and re-pushes it. The Set is a **strong** ref, so `dispose()` deleting its entry is load-bearing — a forgotten delete would pin the record → verdict → computed style → sentinel for the page lifetime. The torture live-set tier guards exactly this.
+- **Fail-closed everywhere.** Each Engine-A entry, each Engine-B entry, and the `pageshow` attach are individually wrapped: a throwing `matches` getter, a throwing verdict read, or a no-DOM environment (no `globalThis.addEventListener`) degrades to a per-entry skip / a silent no-op — never aborts the loop, never throws to the caller. Resync is triggered by `pageshow` with `persisted === true` **only** — not `visibilitychange` (a tab hidden/shown in place keeps firing live events and needs no resync).
+- The hot read/flip paths are **unchanged** and stay 0-alloc; the only new steady-state work happens on the rare, cold `pageshow` restore.
+
+### Tests + torture
+
+- New `test/19-bfcache.test.mjs`: a stale Engine A verdict snaps correct on a persisted pageshow (and stays stale on a non-persisted one); unchanged restore fires **0** effect runs while a mutated restore fires **exactly 1**; instance A's resync leaves instance B untouched (verdict and run count); SSR / no-DOM resync never throws; a throwing `matches` getter is fail-closed per entry; the real `pageshow` listener attaches at most once per instance and gates on `persisted`; Engine B container verdicts re-pin through `engine.resync()`, a disposed watcher is off the live set, and a throwing verdict read is fail-closed per entry.
+- New torture tier, committed: **0 B retained per unchanged restore** and **0 major GC** across a 20,000-restore storm; a **mutating** control proving a verdict that moved while frozen propagates (unchanged +0 runs, mutated +1 run); a **retaining** control proving the 0-B gate can fail; and an **Engine B live-set retention** gate — after 4,096 watch/resync/dispose cycles the engine's live-set size returns to **0** (asserted directly and deterministically via the `@internal` `_liveSize()` seam, so removing `dispose()`'s `live.delete` trips it immediately, with the leak tracker kept as a real-browser finalization proxy; the paired control leaves a batch undisposed and confirms the size gate is load-bearing).
+
+### Notes
+
+- Bundle size is now **~3.5 KB min+gz** (3,529 B, esbuild + `gzip -9`, lite-signal external) — up from 3,265 B at 1.4.0, the cost of the per-instance `mqls` Map, the per-engine `live` Set, and the resync + `pageshow` wiring.
+- `createMedia()` now allocates one additional `Map` (the `mqls` sibling) per instance — reflected in the allocation-profile table. `createMedia()` is a cold factory op, not a hot path.
+- **In-browser scope:** the `pageshow` listener is attached for the page lifetime and never removed (consistent with the page-lifetime memoization contract). In Node / SSR there is no `globalThis.addEventListener`, so nothing is attached — per-request scoped instances retain nothing.
+
 ## 1.4.0 — multi-root Engine B (shadow DOM + cross-realm iframe)
 
 M2 hardening. **No public API change** — `containerMedia()` and `containerStyle()` keep their exact signatures. This is a transparent correctness/robustness release, bumped to a minor per the roadmap because it adds a capability class. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@zakkster/lite-media — oscilloscope · v1.1</title>
+    <title>@zakkster/lite-media — oscilloscope · v1.4.1</title>
     <script type="importmap">
         {
             "imports": {
@@ -279,12 +279,26 @@
         }
         .s6-verdict.on  { color: var(--fg-hot); border-color: var(--fg); }
         .s6-verdict.off { color: var(--fg-dim); }
+
+        /* --- S8 · containerStyle playground --- */
+        #s8-wrap {
+            border: 1px solid var(--fg-dim);
+            background: var(--bg);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        #s8-wrap:has(#s8-card.on) { border-color: var(--fg); }
+        #s8-card.on { border-color: var(--fg); background: var(--bg-2); }
+        #s8-card.on h3 { color: var(--fg-hot); }
+
+        /* --- S10 · bfcache log emphasis --- */
+        #s10-log .line.warn { color: var(--warn); }
     </style>
 </head>
 <body>
     <header>
         <h1>LITE-MEDIA</h1>
-        <span class="sub">reactive media · container-query · preference signals · v1.1.0</span>
+        <span class="sub">reactive media · container-query · style-query · breakpoints · bfcache-aware · v1.4.1</span>
     </header>
 
     <nav id="tabs">
@@ -294,6 +308,10 @@
         <button data-scene="s4">S4 · FLIP STORM</button>
         <button data-scene="s5">S5 · CONTAINER</button>
         <button data-scene="s6">S6 · CREATEMEDIA</button>
+        <button data-scene="s7">S7 · BREAKPOINTS</button>
+        <button data-scene="s8">S8 · CONTAINERSTYLE</button>
+        <button data-scene="s9">S9 · SHADOW ROOT</button>
+        <button data-scene="s10">S10 · BFCACHE</button>
     </nav>
 
     <main>
@@ -311,6 +329,8 @@
                         <div class="pref" data-key="mc"><span class="dot"></span><span class="name">moreContrast</span></div>
                         <div class="pref" data-key="rd"><span class="dot"></span><span class="name">reducedData</span></div>
                         <div class="pref" data-key="rt"><span class="dot"></span><span class="name">reducedTransparency</span></div>
+                        <div class="pref" data-key="sd"><span class="dot"></span><span class="name">standaloneDisplay</span></div>
+                        <div class="pref" data-key="hd"><span class="dot"></span><span class="name">highDynamicRange</span></div>
                     </div>
                 </div>
                 <div class="panel">
@@ -324,6 +344,8 @@
                         <div class="toggle" data-key="mc"><span>moreContrast</span><span class="kbd">CLICK</span></div>
                         <div class="toggle" data-key="rd"><span>reducedData</span><span class="kbd">CLICK</span></div>
                         <div class="toggle" data-key="rt"><span>reducedTransparency</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="sd"><span>standaloneDisplay</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" data-key="hd"><span>highDynamicRange</span><span class="kbd">CLICK</span></div>
                     </div>
                 </div>
             </div>
@@ -449,16 +471,112 @@
                 </div>
             </div>
         </section>
+
+        <!-- S7 · breakpoints — named bands from ONE computed<string> -->
+        <section id="s7" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>breakpoints() — one interned-token band signal</h2>
+                    <p class="dim">A <code>{ name: minWidthPx }</code> map compiles to ONE <code>computed&lt;string&gt;</code>: the active band. Resize the real window — the band updates only when you cross a threshold, and downstream runs exactly once per real change.</p>
+                    <div id="s7-verdict" class="verdict nomatch mt">—</div>
+                    <div class="s2-grid" id="s7-bands"></div>
+                </div>
+                <div class="panel">
+                    <h2>Band state</h2>
+                    <div class="stat"><span class="k">map</span><span class="v" id="s7-map">sm:0 · md:768 · lg:1024 · xl:1440</span></div>
+                    <div class="stat"><span class="k">viewport width</span><span class="v" id="s7-vw">–</span></div>
+                    <div class="stat"><span class="k">band change runs</span><span class="v" id="s7-runs">0</span></div>
+                    <div class="stat"><span class="k">bands (stats)</span><span class="v" id="s7-bands-stat">–</span></div>
+                    <p class="dim tiny mt">Real <code>window.matchMedia</code> — each boundary is a constructed <code>(min-width: Npx)</code> observed through <code>media()</code>. JS never compares widths.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- S8 · containerStyle — @container style() query, no container-type -->
+        <section id="s8" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>containerStyle() — @container style(--theme: dark)</h2>
+                    <p class="dim">A style query resolves against any ancestor and needs NO <code>container-type</code>. The button below flips <code>--theme</code> on the wrapper; the signal flips through the same sentinel engine as <code>containerMedia()</code>.</p>
+                    <div class="row">
+                        <button class="big" id="s8-toggle">TOGGLE --theme</button>
+                        <span class="dim" id="s8-current">--theme: light</span>
+                    </div>
+                    <div id="s8-wrap" style="--theme: light">
+                        <div id="s8-card" class="s5-content">
+                            <h3 id="s8-headline">Light</h3>
+                            <p id="s8-body">--theme is not "dark" on any ancestor container.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <h2>Signal state</h2>
+                    <div class="s5-verdict-panel">
+                        <div class="pref" data-s8="dark"><span class="name">style(--theme: dark)</span><span class="dot"></span></div>
+                    </div>
+                    <div class="stat mt"><span class="k">watched (default instance)</span><span class="v" id="s8-watched">–</span></div>
+                    <p class="dim tiny mt">lite-media registers exactly one custom property (<code>--lm-v</code>). <code>--theme</code> is yours; we never register it. Requires <code>@container style()</code> support (Chrome 111+, Safari 18+).</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- S9 · shadow root — containerMedia() flips through encapsulation -->
+        <section id="s9" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>containerMedia() inside an open shadow root</h2>
+                    <p class="dim">A real open shadow root is attached to the host below and a container mounted inside it. The engine resolves <code>el.getRootNode()</code> and adopts its <code>@container</code> sheet into the shadow root — so the verdict flips through shadow encapsulation instead of sitting stuck-false.</p>
+                    <div id="s9-host" class="s5-wrap"></div>
+                    <p class="dim tiny mt">Grab the bottom-right corner and drag. The sentinel + rule live in the shadow root's own <code>adoptedStyleSheets</code>, not the document's.</p>
+                </div>
+                <div class="panel">
+                    <h2>Signal state</h2>
+                    <div class="s5-verdict-panel">
+                        <div class="pref" data-s9="w20"><span class="name">min-width: 20rem</span><span class="dot"></span></div>
+                        <div class="pref" data-s9="w30"><span class="name">min-width: 30rem</span><span class="dot"></span></div>
+                    </div>
+                    <div class="stat mt"><span class="k">shadow container width</span><span class="v" id="s9-w">–</span></div>
+                    <div class="stat"><span class="k">shadow root adopted sheets</span><span class="v" id="s9-sheets">–</span></div>
+                    <div class="stat"><span class="k">document adopted sheets</span><span class="v" id="s9-docsheets">–</span></div>
+                    <p class="dim tiny mt">The document's own sheet count stays at whatever S5 needed — the shadow container never touches it.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- S10 · bfcache resync — a persisted pageshow re-pins a stale answer -->
+        <section id="s10" class="scene">
+            <div class="grid">
+                <div class="panel">
+                    <h2>bfcache resync — a pinned answer per event</h2>
+                    <p class="dim">A page restored from the back/forward cache re-fires NO <code>change</code> or <code>transitionrun</code>. This scene runs a scoped instance on a mock <code>matchMedia</code>: mutate the verdict SILENTLY (no event, like a freeze), then fire a pageshow. An ordinary pageshow is a no-op; a <em>persisted</em> one re-pins the signal.</p>
+                    <div id="s10-verdict" class="verdict nomatch mt">— NO MATCH —</div>
+                    <div class="controls mt">
+                        <div class="toggle" id="s10-mutate"><span>Mutate verdict silently (page frozen)</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" id="s10-ordinary"><span>Fire ordinary pageshow (persisted: false)</span><span class="kbd">CLICK</span></div>
+                        <div class="toggle" id="s10-restore"><span>Fire bfcache pageshow (persisted: true)</span><span class="kbd">CLICK</span></div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <h2>State</h2>
+                    <div class="stat"><span class="k">signal (what the graph sees)</span><span class="v" id="s10-sig">false</span></div>
+                    <div class="stat"><span class="k">underlying mock verdict</span><span class="v" id="s10-mock">false</span></div>
+                    <div class="stat"><span class="k">stale?</span><span class="v" id="s10-stale">no</span></div>
+                    <div class="stat"><span class="k">effect runs</span><span class="v" id="s10-runs">0</span></div>
+                    <div class="panel mt"><div id="s10-log" class="log"></div></div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script type="module">
         import { effect } from "@zakkster/lite-signal";
         import {
-            configure, media, containerMedia, createMedia, stats,
+            configure, media, containerMedia, containerStyle, breakpoints,
+            createMedia, stats,
         } from "@zakkster/lite-media";
 
         // --- constants ---
-        const S1_KEYS = ["rm", "ds", "hc", "cp", "fc", "mc", "rd", "rt"];
+        const S1_KEYS = ["rm", "ds", "hc", "cp", "fc", "mc", "rd", "rt", "sd", "hd"];
         const S1_QUERY_BY_KEY = {
             rm: "(prefers-reduced-motion: reduce)",
             ds: "(prefers-color-scheme: dark)",
@@ -468,6 +586,8 @@
             mc: "(prefers-contrast: more)",
             rd: "(prefers-reduced-data: reduce)",
             rt: "(prefers-reduced-transparency: reduce)",
+            sd: "(display-mode: standalone)",
+            hd: "(dynamic-range: high)",
         };
         const S1_MAX_LOG = 20;
         const S2_QUERY = "(max-width: 40rem)";
@@ -767,6 +887,178 @@
             $s2Runs.textContent = s2TotalRuns;
             $s2Listeners.textContent = mockCount(S2_QUERY);
         }, 100);
+
+        // ==========================================================
+        // S7 · breakpoints — one interned-token band signal (real matchMedia)
+        // ==========================================================
+        const S7_MAP = { sm: 0, md: 768, lg: 1024, xl: 1440 };
+        const s7Band = breakpoints(S7_MAP);
+        const $s7Verdict = document.getElementById("s7-verdict");
+        const $s7Bands = document.getElementById("s7-bands");
+        const $s7Vw = document.getElementById("s7-vw");
+        const $s7Runs = document.getElementById("s7-runs");
+        const $s7BandsStat = document.getElementById("s7-bands-stat");
+        const $s7BandCells = new Map();
+        for (const n of Object.keys(S7_MAP)) {
+            const cell = document.createElement("div");
+            cell.className = "s2-cell";
+            cell.textContent = n;
+            $s7Bands.appendChild(cell);
+            $s7BandCells.set(n, cell);
+        }
+        let s7Runs = 0;
+        effect(() => {
+            const band = s7Band();
+            s7Runs = (s7Runs + 1) | 0;
+            $s7Verdict.className = "verdict match mt";
+            $s7Verdict.textContent = band;
+            for (const [n, cell] of $s7BandCells) cell.classList.toggle("on", n === band);
+        });
+        setInterval(() => {
+            $s7Vw.textContent = window.innerWidth + " px";
+            $s7Runs.textContent = (s7Runs - 1); // minus the creation run
+            $s7BandsStat.textContent = stats().bands;
+        }, 100);
+
+        // ==========================================================
+        // S8 · containerStyle — @container style(--theme: dark), no container-type
+        // ==========================================================
+        const $s8Wrap = document.getElementById("s8-wrap");
+        const $s8Card = document.getElementById("s8-card");
+        const $s8Toggle = document.getElementById("s8-toggle");
+        const $s8Current = document.getElementById("s8-current");
+        const $s8Headline = document.getElementById("s8-headline");
+        const $s8Body = document.getElementById("s8-body");
+        const $s8DarkPref = document.querySelector('[data-s8="dark"]');
+        const $s8Watched = document.getElementById("s8-watched");
+        const s8Dark = containerStyle($s8Card, "--theme", "dark");
+        effect(() => {
+            const on = s8Dark();
+            $s8Card.classList.toggle("on", on);
+            $s8DarkPref.classList.toggle("on", on);
+            $s8Headline.textContent = on ? "Dark" : "Light";
+            $s8Body.textContent = on
+                ? '--theme resolves to "dark" on an ancestor container.'
+                : '--theme is not "dark" on any ancestor container.';
+        });
+        $s8Toggle.addEventListener("pointerdown", () => {
+            const cur = $s8Wrap.style.getPropertyValue("--theme").trim();
+            const next = cur === "dark" ? "light" : "dark";
+            $s8Wrap.style.setProperty("--theme", next);
+            $s8Current.textContent = "--theme: " + next;
+        });
+        setInterval(() => { $s8Watched.textContent = stats().watched; }, 100);
+
+        // ==========================================================
+        // S9 · containerMedia() inside a REAL open shadow root
+        // ==========================================================
+        const $s9Host = document.getElementById("s9-host");
+        const $s9W20Pref = document.querySelector('[data-s9="w20"]');
+        const $s9W30Pref = document.querySelector('[data-s9="w30"]');
+        const $s9W = document.getElementById("s9-w");
+        const $s9Sheets = document.getElementById("s9-sheets");
+        const $s9DocSheets = document.getElementById("s9-docsheets");
+
+        const s9Shadow = $s9Host.attachShadow({ mode: "open" });
+        const s9Style = document.createElement("style");
+        s9Style.textContent =
+            ".box{container-type:inline-size;border:1px solid #57c58c;"
+            + "background:#0a2019;padding:1rem;resize:horizontal;overflow:hidden;"
+            + "min-width:12rem;max-width:40rem}"
+            + ".box .c{padding:1rem;border:1px dashed #123324;color:#a6ffce;"
+            + "font-family:ui-monospace,monospace;font-size:0.8125rem}";
+        s9Shadow.appendChild(s9Style);
+        const s9Box = document.createElement("div");
+        s9Box.className = "box";
+        const s9Content = document.createElement("div");
+        s9Content.className = "c";
+        s9Box.appendChild(s9Content);
+        s9Shadow.appendChild(s9Box);
+
+        const s9W20 = containerMedia(s9Box, "(min-width: 20rem)");
+        const s9W30 = containerMedia(s9Box, "(min-width: 30rem)");
+        effect(() => {
+            const on20 = s9W20();
+            const on30 = s9W30();
+            $s9W20Pref.classList.toggle("on", on20);
+            $s9W30Pref.classList.toggle("on", on30);
+            s9Content.textContent = !on20
+                ? "Narrow (< 20rem) — inside a shadow root."
+                : !on30
+                    ? "Medium (20-30rem) — shadow-encapsulated verdict."
+                    : "Wide (>= 30rem) — the signal flipped through encapsulation.";
+        });
+        setInterval(() => {
+            $s9W.textContent = Math.round(s9Box.getBoundingClientRect().width) + " px";
+            $s9Sheets.textContent = s9Shadow.adoptedStyleSheets
+                ? s9Shadow.adoptedStyleSheets.length : 0;
+            $s9DocSheets.textContent = document.adoptedStyleSheets.length;
+        }, 100);
+
+        // ==========================================================
+        // S10 · bfcache resync — a persisted pageshow re-pins a stale answer
+        // ==========================================================
+        // A scoped instance on a mock matchMedia whose verdict we mutate SILENTLY
+        // (no change event) — exactly what a bfcache freeze does to the real one.
+        const $s10Verdict = document.getElementById("s10-verdict");
+        const $s10Mutate = document.getElementById("s10-mutate");
+        const $s10Ordinary = document.getElementById("s10-ordinary");
+        const $s10Restore = document.getElementById("s10-restore");
+        const $s10Sig = document.getElementById("s10-sig");
+        const $s10Mock = document.getElementById("s10-mock");
+        const $s10Stale = document.getElementById("s10-stale");
+        const $s10Runs = document.getElementById("s10-runs");
+        const $s10Log = document.getElementById("s10-log");
+
+        let s10Matches = false;
+        const s10Instance = createMedia({
+            matchMedia: () => ({
+                get matches() { return s10Matches; },
+                addEventListener() {},   // never dispatch — freeze has no events
+                removeEventListener() {},
+            }),
+        });
+        const s10Sig = s10Instance.media("(prefers-color-scheme: dark)");
+        let s10Runs = 0;
+        effect(() => {
+            const on = s10Sig();
+            s10Runs = (s10Runs + 1) | 0;
+            $s10Verdict.className = "verdict " + (on ? "match" : "nomatch") + " mt";
+            $s10Verdict.textContent = on ? "— MATCH —" : "— NO MATCH —";
+        });
+        let s10LogSeq = 0;
+        function s10Log(msg, warn) {
+            const line = document.createElement("div");
+            line.className = "line fresh" + (warn ? " warn" : "");
+            line.textContent = "#" + (++s10LogSeq).toString().padStart(3, "0") + "  " + msg;
+            $s10Log.prepend(line);
+            const kids = $s10Log.children;
+            for (let i = 1; i < kids.length; i++) kids[i].classList.remove("fresh");
+            while ($s10Log.childElementCount > 20) $s10Log.lastElementChild.remove();
+        }
+        function s10Refresh() {
+            const sv = s10Sig.peek();
+            $s10Sig.textContent = String(sv);
+            $s10Mock.textContent = String(s10Matches);
+            $s10Stale.textContent = (sv !== s10Matches) ? "YES — signal is behind the mock" : "no";
+            $s10Runs.textContent = (s10Runs - 1); // minus the creation run
+        }
+        $s10Mutate.addEventListener("pointerdown", () => {
+            s10Matches = !s10Matches; // NO change event — the page is "frozen"
+            s10Log("mock verdict -> " + s10Matches + " (silent; no change event)", true);
+            s10Refresh();
+        });
+        $s10Ordinary.addEventListener("pointerdown", () => {
+            s10Instance._pageshow(false); // ordinary navigation pageshow
+            s10Log("pageshow persisted:false -> no-op (nothing resynced)");
+            s10Refresh();
+        });
+        $s10Restore.addEventListener("pointerdown", () => {
+            s10Instance._pageshow(true); // bfcache restore
+            s10Log("pageshow persisted:true -> resync (answer re-pinned)");
+            s10Refresh();
+        });
+        s10Refresh();
     </script>
 </body>
 </html>

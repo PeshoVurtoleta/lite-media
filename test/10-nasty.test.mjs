@@ -7,7 +7,7 @@ import {
 
 // ============================================================================
 // Nasty things people accidentally OR maliciously do. Progression: shape
-// tricks → throwing components → live desync → cross-instance isolation
+// tricks -> throwing components -> live desync -> cross-instance isolation
 // under attack.
 // ============================================================================
 
@@ -36,7 +36,7 @@ function makeMockMM() {
 // Malformed MQL shapes
 // ============================================================================
 
-describe("nasty · malformed MQL shapes", () => {
+describe("nasty - malformed MQL shapes", () => {
     beforeEach(() => __resetForTests());
 
     test("MQL missing addEventListener throws named TypeError", () => {
@@ -52,12 +52,12 @@ describe("nasty · malformed MQL shapes", () => {
         assert.throws(() => media("(x)"), TypeError);
     });
 
-    test("factory returning function is refused — a function is 'object' via typeof but has no addEventListener", () => {
+    test("factory returning function is refused -- a function is 'object' via typeof but has no addEventListener", () => {
         configure({ matchMedia: () => function empty() {} });
         assert.throws(() => media("(x)"), TypeError);
     });
 
-    test("MQL with addEventListener that throws — media() propagates the throw and does not orphan a lite-signal node", () => {
+    test("MQL with addEventListener that throws -- media() propagates the throw and does not orphan a lite-signal node", () => {
         // Node-leak guard: v1.1 fix moved signal() below successful
         // addEventListener() so a throwing MQL cannot compound orphaned
         // nodes against the 1024-node budget on repeated retries.
@@ -68,7 +68,7 @@ describe("nasty · malformed MQL shapes", () => {
             }),
         });
         assert.throws(() => media("(x)"), /nope/);
-        // Repeat many times — if we were leaking one node per throw, the
+        // Repeat many times -- if we were leaking one node per throw, the
         // per-process node pool would fill and later media() calls would
         // start throwing CapacityError instead of "nope".
         for (let i = 0; i < 100; i++) {
@@ -76,7 +76,7 @@ describe("nasty · malformed MQL shapes", () => {
         }
     });
 
-    test("MQL with getter-based matches — read once at cache-miss, not repeatedly", () => {
+    test("MQL with getter-based matches -- read once at cache-miss, not repeatedly", () => {
         let reads = 0;
         configure({
             matchMedia: () => ({
@@ -96,11 +96,11 @@ describe("nasty · malformed MQL shapes", () => {
 // Handlers behaving badly
 // ============================================================================
 
-describe("nasty · badly-behaved handlers", () => {
+describe("nasty - badly-behaved handlers", () => {
     beforeEach(() => __resetForTests());
 
-    test("effect that throws only sometimes — good effect still receives every flip", () => {
-        // A throwing effect at creation time propagates out of effect() —
+    test("effect that throws only sometimes -- good effect still receives every flip", () => {
+        // A throwing effect at creation time propagates out of effect() --
         // that's lite-signal's contract (fail loud, don't swallow errors).
         // What lite-media MUST guarantee is that once a good effect is
         // subscribed, a subsequent throw from a co-subscribed effect
@@ -131,7 +131,7 @@ describe("nasty · badly-behaved handlers", () => {
         stopGood();
     });
 
-    test("effect that unsubscribes itself — clean dispose, no crash", () => {
+    test("effect that unsubscribes itself -- clean dispose, no crash", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const s = media("(x)");
@@ -142,12 +142,12 @@ describe("nasty · badly-behaved handlers", () => {
             runs++;
             if (runs >= 2) stop();
         });
-        mm.flip("(x)", true); // triggers 2nd run → self-dispose
+        mm.flip("(x)", true); // triggers 2nd run -> self-dispose
         mm.flip("(x)", false); // must not fire the disposed effect
         assert.strictEqual(runs, 2);
     });
 
-    test("effect that materializes ANOTHER signal — no crash, both remain reactive", () => {
+    test("effect that materializes ANOTHER signal -- no crash, both remain reactive", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const s1 = media("(a)");
@@ -172,7 +172,7 @@ describe("nasty · badly-behaved handlers", () => {
 // Signal runtime writability (documented anti-pattern)
 // ============================================================================
 
-describe("nasty · signal is writable at runtime (docs say don't)", () => {
+describe("nasty - signal is writable at runtime (docs say don't)", () => {
     beforeEach(() => __resetForTests());
 
     test("calling .set() on a returned signal permanently desyncs from browser flips", () => {
@@ -183,7 +183,7 @@ describe("nasty · signal is writable at runtime (docs say don't)", () => {
         // Anti-pattern: writing directly. Documented as broken.
         s.set(true);
         assert.strictEqual(s(), true);
-        // Now flip the browser to true — that value is already what's set,
+        // Now flip the browser to true -- that value is already what's set,
         // so nothing observable changes. Then flip to false.
         mm.flip("(x)", false);
         // The signal DID receive the browser event and is now `false`.
@@ -197,7 +197,7 @@ describe("nasty · signal is writable at runtime (docs say don't)", () => {
 // Cross-instance isolation under attack
 // ============================================================================
 
-describe("nasty · cross-instance leak attempts", () => {
+describe("nasty - cross-instance leak attempts", () => {
     beforeEach(() => __resetForTests());
 
     test("swapping instance A's matchMedia in-flight cannot poison instance B", () => {
@@ -234,7 +234,7 @@ describe("nasty · cross-instance leak attempts", () => {
     });
 
     test("scoped instance's containerMedia() cache does not accept module-level el as key twice", () => {
-        // WeakMap keying: same el → same inner Map. But different createMedia
+        // WeakMap keying: same el -> same inner Map. But different createMedia
         // instances have DIFFERENT WeakMaps, so el is a fresh key per instance.
         const el = { id: "shared-el" };
         const engineA = {
@@ -257,7 +257,7 @@ describe("nasty · cross-instance leak attempts", () => {
 // Configuration race
 // ============================================================================
 
-describe("nasty · configure race", () => {
+describe("nasty - configure race", () => {
     beforeEach(() => __resetForTests());
 
     test("configure() thrown by validation does not corrupt module state", () => {
@@ -275,10 +275,10 @@ describe("nasty · configure race", () => {
     });
 
     test("failed materialization does not lock; re-configure recovers", () => {
-        // No matchMedia, no ssrDefault → media() throws.
+        // No matchMedia, no ssrDefault -> media() throws.
         if (typeof globalThis.matchMedia === "function") return; // skip in browser-ish envs
         assert.throws(() => media("(x)"), /no matchMedia/i);
-        // Now configure — must work.
+        // Now configure -- must work.
         configure({ ssrDefault: true });
         assert.strictEqual(media("(x)")(), true);
     });

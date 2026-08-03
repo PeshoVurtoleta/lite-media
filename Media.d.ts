@@ -1,16 +1,21 @@
 /**
- * @zakkster/lite-media v1.4.0 — TypeScript declarations.
+ * @zakkster/lite-media v1.4.1 -- TypeScript declarations.
  *
  * v1.4.0 makes Engine B multi-root (shadow DOM + cross-realm iframe). This is a
- * transparent correctness release: NO public signature changed — containerMedia()
+ * transparent correctness release: NO public signature changed -- containerMedia()
  * and containerStyle() are identical, and a container element inside a shadow root
  * or a foreign realm now materializes against that root's own sheet instead of
  * sitting stuck-false.
  *
+ * v1.4.1 adds a bfcache / `pageshow` lifecycle audit: each instance re-pins its
+ * signals when the page is restored from the back/forward cache (persisted
+ * pageshow). Also a transparent release -- NO public signature changed; the only
+ * new surface is the internal __pageshowForTests seam.
+ *
  * The returned signal type is deliberately narrowed to hide `.set`/`.update`
  * from callers. At runtime the object is lite-signal's `Signal<boolean>` (or,
  * for `breakpoints()`, a `Computed<string>`), so a JS consumer or a TS cast
- * can still write — see the README's "Read-only by convention" note for why
+ * can still write -- see the README's "Read-only by convention" note for why
  * you should not.
  */
 
@@ -72,7 +77,7 @@ export interface MockMediaQueryList {
  * container query. Return `initial` synchronously, then call `onChange` for
  * every subsequent verdict transition.
  *
- * IMPORTANT — sync-flip window: `onChange` MUST NOT be invoked during the
+ * IMPORTANT -- sync-flip window: `onChange` MUST NOT be invoked during the
  * `watch()` call itself. lite-media wires the signal reference AFTER `watch`
  * returns; any sync `onChange` inside `watch` will land against an
  * `undefined` signal binding and be silently dropped. Fold sync state into
@@ -82,7 +87,7 @@ export interface MockMediaQueryList {
  * The default browser engine implements this via an injected `@container`
  * rule + zero-size sentinel + `transitionrun` on a registered `<custom-ident>`
  * CSS property. The default Node engine returns `{ initial: false, dispose:
- * noop }` — an inert always-false signal.
+ * noop }` -- an inert always-false signal.
  *
  * Users can pass their own engine (test mocks, headless-render adapters) via
  * `configure({ containerEngine })` on the default instance, or via
@@ -110,7 +115,7 @@ export interface ConfigureOptions {
     /**
      * Value returned by media signals when no `matchMedia` is resolvable.
      * Process-wide constant on the default instance. Non-boolean input
-     * (including `undefined`) is a no-op — does not un-set a previous value.
+     * (including `undefined`) is a no-op -- does not un-set a previous value.
      * For per-request SSR, use `createMedia({ ssrDefault })`.
      */
     ssrDefault?: boolean;
@@ -125,7 +130,7 @@ export interface ConfigureOptions {
 /**
  * Options for creating a scoped lite-media instance via `createMedia()`.
  * Same shape as `ConfigureOptions` but the instance NEVER locks and has no
- * `configure()` method — options are creation-only.
+ * `configure()` method -- options are creation-only.
  */
 export type CreateMediaOptions = ConfigureOptions;
 
@@ -151,12 +156,24 @@ export interface ScopedMedia {
     highDynamicRange(): MediaSignal;
     stats(): Stats;
     /**
-     * @internal — test-only escape hatch. NOT part of the semver contract.
+     * @internal -- test-only escape hatch. NOT part of the semver contract.
      * Simulate a container verdict flip by routing `matches` through the engine
      * onChange that owns `sig`. Throws if `sig` is not a container signal of
      * this instance.
      */
     _flip(sig: MediaSignal, matches: boolean): void;
+    /**
+     * @internal -- test-only escape hatch. NOT part of the semver contract.
+     * Run the raw bfcache resync path (v1.4.1): re-read every watched mql and
+     * every live container verdict and re-push it through the signal's set.
+     */
+    _resync(): void;
+    /**
+     * @internal -- test-only escape hatch. NOT part of the semver contract.
+     * Exercise the exact gated `pageshow` listener body (v1.4.1). `persisted`
+     * !== true is a no-op; `persisted` === true runs `_resync()`.
+     */
+    _pageshow(persisted: boolean): void;
 }
 
 /**
@@ -190,7 +207,7 @@ export interface Stats {
  *   - Tests that need isolation without touching module state.
  *   - Multiple mount points with different matchMedia mocks.
  *
- * Options are creation-only. Scoped instances never lock — there's no
+ * Options are creation-only. Scoped instances never lock -- there's no
  * `configure()` step and no lock error to worry about.
  *
  * @throws {TypeError} if `containerEngine` is malformed.
@@ -230,7 +247,7 @@ export function media(query: string): MediaSignal;
  * dropped in production builds and never mutates the element.
  *
  * Off-DOM (SSR / Node without a container engine) this returns a stable
- * `false` signal and never throws — the conservative, fail-closed verdict.
+ * `false` signal and never throws -- the conservative, fail-closed verdict.
  * Unlike `media()`, `ssrDefault` does NOT apply to this path.
  *
  * @throws {TypeError} if `el` is null / primitive or `query` is not a string
@@ -248,7 +265,7 @@ export function containerMedia(el: Element | object, query: string): MediaSignal
  * Unlike a size query, a `style()` query resolves against any ancestor and
  * needs NO `container-type` on the element or its ancestors, so the dev-only
  * missing-container warning never fires for it. lite-media does not register
- * the queried property — that stays the caller's responsibility.
+ * the queried property -- that stays the caller's responsibility.
  *
  * Off-DOM this returns a stable `false` signal and never throws, exactly like
  * `containerMedia()`.
@@ -277,38 +294,38 @@ export function containerStyle(el: Element | object, prop: string, value: string
  */
 export function breakpoints<M extends BreakpointMap>(map: M): BandSignal<keyof M & string>;
 
-/** `(prefers-reduced-motion: reduce)` — user requests reduced motion. */
+/** `(prefers-reduced-motion: reduce)` -- user requests reduced motion. */
 export function reducedMotion(): MediaSignal;
-/** `(prefers-color-scheme: dark)` — user prefers dark UI. */
+/** `(prefers-color-scheme: dark)` -- user prefers dark UI. */
 export function darkScheme(): MediaSignal;
-/** `(hover: hover)` — primary input supports true hover. */
+/** `(hover: hover)` -- primary input supports true hover. */
 export function hoverCapable(): MediaSignal;
-/** `(pointer: coarse)` — primary input is coarse (touch, stylus). */
+/** `(pointer: coarse)` -- primary input is coarse (touch, stylus). */
 export function coarsePointer(): MediaSignal;
-/** `(forced-colors: active)` — OS forced-colors / high-contrast mode is on. */
+/** `(forced-colors: active)` -- OS forced-colors / high-contrast mode is on. */
 export function forcedColors(): MediaSignal;
-/** `(prefers-contrast: more)` — user requests higher contrast. */
+/** `(prefers-contrast: more)` -- user requests higher contrast. */
 export function moreContrast(): MediaSignal;
-/** `(prefers-reduced-data: reduce)` — user opted into data-saver mode. */
+/** `(prefers-reduced-data: reduce)` -- user opted into data-saver mode. */
 export function reducedData(): MediaSignal;
-/** `(prefers-reduced-transparency: reduce)` — user requests reduced transparency. */
+/** `(prefers-reduced-transparency: reduce)` -- user requests reduced transparency. */
 export function reducedTransparency(): MediaSignal;
-/** `(display-mode: standalone)` — running as an installed / standalone PWA. */
+/** `(display-mode: standalone)` -- running as an installed / standalone PWA. */
 export function standaloneDisplay(): MediaSignal;
-/** `(dynamic-range: high)` — display and browser support a high dynamic range. */
+/** `(dynamic-range: high)` -- display and browser support a high dynamic range. */
 export function highDynamicRange(): MediaSignal;
 
 /** Cheap live snapshot of the default instance's state. */
 export function stats(): Stats;
 
 /**
- * @internal — test-only escape hatch. NOT part of the semver contract.
+ * @internal -- test-only escape hatch. NOT part of the semver contract.
  * Resets all default-instance state including the container engine slot.
  */
 export function __resetForTests(): void;
 
 /**
- * @internal — test-only escape hatch. NOT part of the semver contract.
+ * @internal -- test-only escape hatch. NOT part of the semver contract.
  * Simulate a container verdict flip on the default instance by routing
  * `matches` through the engine onChange that owns `sig`. Materializes the
  * default instance if needed; throws if `sig` is not one of its container
@@ -317,9 +334,18 @@ export function __resetForTests(): void;
 export function __flipForTests(sig: MediaSignal, matches: boolean): void;
 
 /**
- * @internal — test-only escape hatch. NOT part of the semver contract.
+ * @internal -- test-only escape hatch. NOT part of the semver contract.
  * Returns a fresh browser container engine (the same factory the browser
  * environment picks), so the multi-root watch/dispose contract can be exercised
  * directly against a mock DOM. There is no public container-dispose API.
  */
 export function __browserEngineForTests(): ContainerEngine;
+
+/**
+ * @internal -- test-only escape hatch. NOT part of the semver contract.
+ * Synthesize a `pageshow` on the default instance with the given `persisted`
+ * flag and run the exact gated listener body (v1.4.1 bfcache). `persisted` !==
+ * true is a no-op; `persisted` === true re-pins every Engine A and Engine B
+ * verdict, so a bfcache restore can be exercised with no real browser.
+ */
+export function __pageshowForTests(persisted: boolean): void;

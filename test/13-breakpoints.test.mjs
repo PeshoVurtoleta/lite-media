@@ -6,7 +6,7 @@ import {
 } from "../Media.js";
 
 // ---------------------------------------------------------------------------
-// breakpoints() — named responsive bands as one interned-token computed<string>
+// breakpoints() -- named responsive bands as one interned-token computed<string>
 // ---------------------------------------------------------------------------
 // The active band is the name of the highest-threshold entry whose
 // (min-width: Npx) matches, with the smallest entry as the mobile-first floor.
@@ -44,7 +44,7 @@ function makeMock() {
 const Q_MD = "(min-width: 768px)";
 const Q_LG = "(min-width: 1024px)";
 
-describe("breakpoints() — active band", () => {
+describe("breakpoints() -- active band", () => {
     test("returns the floor (smallest) name when nothing larger matches", () => {
         const mock = makeMock(); // md, lg both false
         const m = createMedia({ matchMedia: mock.matchMedia });
@@ -69,7 +69,7 @@ describe("breakpoints() — active band", () => {
         assert.equal(bp(), "md");
     });
 
-    test("declaration order does not matter — sorts by threshold", () => {
+    test("declaration order does not matter -- sorts by threshold", () => {
         const mock = makeMock();
         mock.setInitial(Q_MD, true);
         const m = createMedia({ matchMedia: mock.matchMedia });
@@ -85,7 +85,7 @@ describe("breakpoints() — active band", () => {
     });
 });
 
-describe("breakpoints() — reactivity", () => {
+describe("breakpoints() -- reactivity", () => {
     test("updates the active band as boundaries flip", () => {
         const mock = makeMock();
         const m = createMedia({ matchMedia: mock.matchMedia });
@@ -137,7 +137,7 @@ describe("breakpoints() — reactivity", () => {
     });
 });
 
-describe("breakpoints() — memoization & stats", () => {
+describe("breakpoints() -- memoization & stats", () => {
     test("identical maps share one computed (canonical key)", () => {
         const mock = makeMock();
         const m = createMedia({ matchMedia: mock.matchMedia });
@@ -169,7 +169,7 @@ describe("breakpoints() — memoization & stats", () => {
     });
 });
 
-describe("breakpoints() — validation (fail loud)", () => {
+describe("breakpoints() -- validation (fail loud)", () => {
     test("throws on a non-object map", () => {
         const m = createMedia({ ssrDefault: false });
         assert.throws(() => m.breakpoints(null), TypeError);
@@ -197,7 +197,7 @@ describe("breakpoints() — validation (fail loud)", () => {
     });
 });
 
-describe("breakpoints() — SSR / no-window", () => {
+describe("breakpoints() -- SSR / no-window", () => {
     test("ssrDefault false collapses every boundary -> floor band", () => {
         const m = createMedia({ ssrDefault: false });
         const bp = m.breakpoints({ sm: 0, md: 768, lg: 1024 });
@@ -217,7 +217,7 @@ describe("breakpoints() — SSR / no-window", () => {
     });
 });
 
-describe("breakpoints() — module-level default instance", () => {
+describe("breakpoints() -- module-level default instance", () => {
     beforeEach(() => __resetForTests());
 
     test("works through the module-level export and locks the instance", () => {

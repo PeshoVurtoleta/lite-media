@@ -137,7 +137,7 @@ function containerRules(sheet) {
 }
 function ruleMatchesQuery(rule, query) { return rule.indexOf("@container " + query) >= 0; }
 
-describe("browser engine — interleaved multi-root create/dispose", () => {
+describe("browser engine -- interleaved multi-root create/dispose", () => {
     beforeEach(() => { constructions = 0; installEnv(); });
     afterEach(() => restoreEnv());
 

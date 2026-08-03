@@ -45,13 +45,13 @@ function makeContainerEngine() {
 }
 
 // ============================================================================
-// Tier 1 — smallest surprises (edge-value queries)
+// Tier 1 -- smallest surprises (edge-value queries)
 // ============================================================================
 
-describe("torture · edges — degenerate queries", () => {
+describe("torture - edges -- degenerate queries", () => {
     beforeEach(() => __resetForTests());
 
-    test("empty string query — factory called with '', signal is inert-but-real", () => {
+    test("empty string query -- factory called with '', signal is inert-but-real", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const s = media("");
@@ -70,22 +70,22 @@ describe("torture · edges — degenerate queries", () => {
         assert.strictEqual(stats().watched, 3);
     });
 
-    test("query with newlines and tabs — no crash, distinct signal", () => {
+    test("query with newlines and tabs -- no crash, distinct signal", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const s = media("(min-width:\n\t 400px)");
         assert.strictEqual(typeof s, "function");
     });
 
-    test("query with unicode — Cyrillic, emoji, RTL marks", () => {
+    test("query with unicode -- Cyrillic, emoji, RTL marks", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
-        assert.doesNotThrow(() => media("(prefers-color-scheme: тёмная)"));
-        assert.doesNotThrow(() => media("(min-width: 🚀px)"));
+        assert.doesNotThrow(() => media("(prefers-color-scheme: \u0442\u0451\u043c\u043d\u0430\u044f)"));
+        assert.doesNotThrow(() => media("(min-width: \u{1F680}px)"));
         assert.doesNotThrow(() => media("\u200F(min-width: 400px)\u200E"));
     });
 
-    test("query with quotes and backticks — cache key survives verbatim", () => {
+    test("query with quotes and backticks -- cache key survives verbatim", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const q = "(min-width: 400px) and (\"custom\": 'value')";
@@ -94,7 +94,7 @@ describe("torture · edges — degenerate queries", () => {
         assert.strictEqual(s1, s2);
     });
 
-    test("10KB query — memoization holds, no crash", () => {
+    test("10KB query -- memoization holds, no crash", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const q = "(min-width: 400px)" + " and (min-height: 400px)".repeat(500);
@@ -104,7 +104,7 @@ describe("torture · edges — degenerate queries", () => {
         assert.strictEqual(a, b);
     });
 
-    test("prototype-adjacent query strings are just strings — no pollution", () => {
+    test("prototype-adjacent query strings are just strings -- no pollution", () => {
         // Map keys don't share Object.prototype with plain-object caches, so
         // '__proto__' / 'constructor' / 'toString' are just cache keys.
         const mm = makeMockMM();
@@ -120,12 +120,12 @@ describe("torture · edges — degenerate queries", () => {
 // Lightweight lifecycle
 // ============================================================================
 
-describe("torture · lifecycle — many subscribe/unsubscribe on one signal", () => {
+describe("torture - lifecycle -- many subscribe/unsubscribe on one signal", () => {
     beforeEach(() => __resetForTests());
 
-    test("1000 effect subscribe/unsubscribe cycles on one signal — one survives", () => {
+    test("1000 effect subscribe/unsubscribe cycles on one signal -- one survives", () => {
         // High churn on a small graph. Each effect is created and destroyed
-        // in sequence — only one node exists at a time. Fits easily in the
+        // in sequence -- only one node exists at a time. Fits easily in the
         // node budget.
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
@@ -143,7 +143,7 @@ describe("torture · lifecycle — many subscribe/unsubscribe on one signal", ()
         stop();
     });
 
-    test("__resetForTests() truly resets — post-reset materialization succeeds fresh", () => {
+    test("__resetForTests() truly resets -- post-reset materialization succeeds fresh", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         media("(x)");
@@ -163,7 +163,7 @@ describe("torture · lifecycle — many subscribe/unsubscribe on one signal", ()
 // Mixed engines
 // ============================================================================
 
-describe("torture · mixed — media() and containerMedia() interleaved", () => {
+describe("torture - mixed -- media() and containerMedia() interleaved", () => {
     beforeEach(() => __resetForTests());
 
     test("media() and containerMedia() coexist without cross-contamination", () => {
@@ -181,7 +181,7 @@ describe("torture · mixed — media() and containerMedia() interleaved", () => 
         assert.strictEqual(cSig(), true);
     });
 
-    test("100 containerMedia signals across 10 elements — each independent", () => {
+    test("100 containerMedia signals across 10 elements -- each independent", () => {
         const mm = makeMockMM();
         const ce = makeContainerEngine();
         configure({ matchMedia: mm.matchMedia, containerEngine: ce });
@@ -192,7 +192,7 @@ describe("torture · mixed — media() and containerMedia() interleaved", () => 
                 containerMedia(els[i], `(min-width: ${j * 100}px)`);
             }
         }
-        // Flip one — only its signal moves.
+        // Flip one -- only its signal moves.
         ce.flip(els[3], "(min-width: 800px)", true);
         assert.strictEqual(containerMedia(els[3], "(min-width: 800px)")(), true);
         assert.strictEqual(containerMedia(els[4], "(min-width: 800px)")(), false);

@@ -33,7 +33,7 @@ function makeMockMM() {
     };
 }
 
-describe("createMedia() — creation contract", () => {
+describe("createMedia() -- creation contract", () => {
     beforeEach(() => __resetForTests());
 
     test("returns an object exposing media / containerMedia / prefs / stats", () => {
@@ -51,14 +51,14 @@ describe("createMedia() — creation contract", () => {
         assert.strictEqual(typeof inst.stats, "function");
     });
 
-    test("no configure() method on scoped instance — options are creation-only", () => {
+    test("no configure() method on scoped instance -- options are creation-only", () => {
         const inst = createMedia({ ssrDefault: false });
         assert.strictEqual(inst.configure, undefined);
     });
 
     test("createMedia() with no args works when window.matchMedia is available OR throws honestly", () => {
         // In Node without any config, this instance can materialize signals
-        // only if globalThis.matchMedia exists. On Node it doesn't → media()
+        // only if globalThis.matchMedia exists. On Node it doesn't -> media()
         // throws honestly.
         const inst = createMedia();
         if (typeof globalThis.matchMedia === "function") {
@@ -90,7 +90,7 @@ describe("createMedia() — creation contract", () => {
     });
 });
 
-describe("createMedia() — isolation", () => {
+describe("createMedia() -- isolation", () => {
     beforeEach(() => __resetForTests());
 
     test("two instances with different matchMedia see different worlds", () => {
@@ -118,7 +118,7 @@ describe("createMedia() — isolation", () => {
         assert.strictEqual(sb(), false); // isolated
     });
 
-    test("caches are completely independent — same query, different signals", () => {
+    test("caches are completely independent -- same query, different signals", () => {
         const mm = makeMockMM(); // shared factory, different instances
         const a = createMedia({ matchMedia: mm.matchMedia });
         const b = createMedia({ matchMedia: mm.matchMedia });
@@ -179,7 +179,7 @@ describe("createMedia() — isolation", () => {
     });
 });
 
-describe("createMedia() — preference shortcuts use the instance's cache", () => {
+describe("createMedia() -- preference shortcuts use the instance's cache", () => {
     beforeEach(() => __resetForTests());
 
     test("instance.reducedMotion() and instance.media(canonical query) share signal", () => {
@@ -201,15 +201,15 @@ describe("createMedia() — preference shortcuts use the instance's cache", () =
     });
 });
 
-describe("createMedia() — SSR default", () => {
+describe("createMedia() -- SSR default", () => {
     beforeEach(() => __resetForTests());
 
-    test("ssrDefault: true, no matchMedia → media() returns true", () => {
+    test("ssrDefault: true, no matchMedia -> media() returns true", () => {
         const a = createMedia({ ssrDefault: true });
         assert.strictEqual(a.media("(any)")(), true);
     });
 
-    test("ssrDefault: false, no matchMedia → media() returns false", () => {
+    test("ssrDefault: false, no matchMedia -> media() returns false", () => {
         const a = createMedia({ ssrDefault: false });
         assert.strictEqual(a.media("(any)")(), false);
     });

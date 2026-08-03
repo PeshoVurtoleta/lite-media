@@ -9,7 +9,7 @@ import {
 } from "../Media.js";
 
 // ---------------------------------------------------------------------------
-// LM-01 — the final two of the ten curated preference signals
+// LM-01 -- the final two of the ten curated preference signals
 // ---------------------------------------------------------------------------
 // standaloneDisplay() => (display-mode: standalone)
 // highDynamicRange()  => (dynamic-range: high)
@@ -41,7 +41,7 @@ function makeMock() {
 const Q_STANDALONE = "(display-mode: standalone)";
 const Q_HDR = "(dynamic-range: high)";
 
-describe("LM-01 — standaloneDisplay() & highDynamicRange()", () => {
+describe("LM-01 -- standaloneDisplay() & highDynamicRange()", () => {
     beforeEach(() => __resetForTests());
 
     test("map to the correct queries and reflect initial state", () => {
@@ -70,7 +70,7 @@ describe("LM-01 — standaloneDisplay() & highDynamicRange()", () => {
         assert.deepEqual(seen, [false, true, false]);
     });
 
-    test("are lazily memoized — same signal on repeat call", () => {
+    test("are lazily memoized -- same signal on repeat call", () => {
         const mock = makeMock();
         configure({ matchMedia: mock.matchMedia });
         assert.ok(Object.is(standaloneDisplay(), standaloneDisplay()));

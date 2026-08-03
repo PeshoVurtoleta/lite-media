@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createMedia, __browserEngineForTests } from "../Media.js";
 
 // ===========================================================================
-// v1.4.0 QA pass — boundary gaps the reviewer/planner did not pin with a test.
+// v1.4.0 QA pass -- boundary gaps the reviewer/planner did not pin with a test.
 // Self-contained (no cross-import of another test file's mocks), same style
 // as test/16 and test/17: a realm/DOM mock drives the REAL browser engine.
 // ===========================================================================
@@ -138,7 +138,7 @@ function hasContainerRule(sheet, query) {
 }
 
 // ===========================================================================
-// 1. containerStyle() through a shadow root — style() delegates to
+// 1. containerStyle() through a shadow root -- style() delegates to
 //    containerMedia(); confirm the delegation ALSO lands in the correct root,
 //    not just the size-query path test/16 already covers.
 // ===========================================================================
@@ -154,7 +154,7 @@ describe("containerStyle() through a shadow root", () => {
         const host = makeElement(shadow, doc);
         const sig = m.containerStyle(host, "--theme", "dark");
         assert.strictEqual(typeof sig, "function");
-        // Control: this is exactly the failure mode of the pre-1.4.0 engine —
+        // Control: this is exactly the failure mode of the pre-1.4.0 engine --
         // if containerStyle's delegation ever bypassed the per-root resolution
         // (e.g. by constructing its own sheet path instead of routing through
         // containerMedia), the document would hold the sheet instead.
@@ -234,7 +234,7 @@ describe("two elements, different shadow roots, same query", () => {
         const doc = globalThis.document;
         const s1 = makeShadowRoot(doc);
         const s2 = makeShadowRoot(doc);
-        const s3 = makeShadowRoot(doc); // uninvolved — the no-bleed control
+        const s3 = makeShadowRoot(doc); // uninvolved -- the no-bleed control
         const h1 = makeElement(s1, doc);
         const h2 = makeElement(s2, doc);
         const h3 = makeElement(s3, doc);
@@ -280,7 +280,7 @@ describe("light-DOM regression under mixed multi-root usage", () => {
         assert.strictEqual(constructions, 2, "document sheet built exactly once, on first light-DOM use");
         assert.strictEqual(doc.adoptedStyleSheets.length, 1, "document adopted its own sheet");
 
-        // A second light-DOM element (same or different query) must reuse it —
+        // A second light-DOM element (same or different query) must reuse it --
         // NOT build a second document sheet.
         const lightEl2 = makeElement(doc, doc);
         engine.watch(lightEl2, "(min-width: 300px)", () => {});
@@ -288,7 +288,7 @@ describe("light-DOM regression under mixed multi-root usage", () => {
         assert.strictEqual(doc.adoptedStyleSheets.length, 1, "document still holds exactly one sheet");
 
         // Control: the flat count above is only meaningful if a genuinely NEW
-        // root still grows it — proving `constructions` isn't just stuck.
+        // root still grows it -- proving `constructions` isn't just stuck.
         const shadow2 = makeShadowRoot(doc);
         engine.watch(makeElement(shadow2, doc), "(min-width: 400px)", () => {});
         assert.strictEqual(constructions, 3, "a genuinely new root still grows the sheet count");
@@ -321,8 +321,8 @@ describe("idempotent dispose on the multi-root path", () => {
         assert.strictEqual(sentinel.__listeners.length, 0, "still no listeners after the second dispose");
 
         // Control: proves the `sentinel.parentNode !== null` guard inside
-        // dispose() is load-bearing. An unconditional second removeChild call —
-        // exactly what a missing-guard dispose() would attempt — throws here,
+        // dispose() is load-bearing. An unconditional second removeChild call --
+        // exactly what a missing-guard dispose() would attempt -- throws here,
         // because parentNode is already null (mirrors a real DOM NotFoundError
         // / null-deref on a double removeChild).
         assert.throws(() => { sentinel.parentNode.removeChild(sentinel); }, TypeError);
@@ -335,11 +335,11 @@ describe("idempotent dispose on the multi-root path", () => {
 //    in a WeakMap keyed by the element and resolve the root ONCE, on first
 //    watch (getRootState() memoizes per-root state in a WeakMap the engine
 //    owns, and the disposer/sentinel are bound to the ORIGINAL root's sheet).
-//    Nothing in Media.js re-resolves the root on a later call — a re-parented
+//    Nothing in Media.js re-resolves the root on a later call -- a re-parented
 //    element keeps its existing sentinel + signal wired to the root it was
 //    FIRST watched under. This package makes no claim about behavior after a
 //    host element is moved to a different root (e.g. adoptNode / re-appended
-//    into a different shadow root) — untested, and deliberately not asserted
+//    into a different shadow root) -- untested, and deliberately not asserted
 //    here so as not to invent a contract; see QA report for the recommendation
 //    to record this explicitly in CHANGELOG/README non-goals.
 // ===========================================================================
@@ -363,7 +363,7 @@ describe("fail-closed: no styleable root at all (state.doc === null, no DOM touc
         let result;
         assert.doesNotThrow(() => { result = engine.watch(el, "(min-width: 400px)", () => {}); });
         assert.strictEqual(result.initial, false, "stuck-false verdict");
-        assert.strictEqual(el.children.length, 0, "no sentinel appended — inert stub");
+        assert.strictEqual(el.children.length, 0, "no sentinel appended -- inert stub");
         assert.doesNotThrow(() => result.dispose());
     });
 
@@ -424,7 +424,7 @@ describe("fail-closed: root exists but cannot be fully styled (DOM touched, verd
         // document with no defaultView) that the watched element resolves to via
         // getRootNode(). Load-bearing distinction (Media.js:249-257): the
         // "global CSSStyleSheet fallback" is allowed ONLY when the resolved root's
-        // own document === globalThis.document — never for a foreign document —
+        // own document === globalThis.document -- never for a foreign document --
         // so this must fail closed even though a global CSSStyleSheet ctor exists.
         const realm = makeRealm();
         installEnv(realm);
@@ -443,7 +443,7 @@ describe("fail-closed: root exists but cannot be fully styled (DOM touched, verd
         assert.strictEqual(el.children.length, 1, "sentinel STILL appended (doc exists, just unstyled)");
 
         // Control: the SAME foreign document object, but WITH a defaultView
-        // carrying its own CSSStyleSheet ctor, DOES get styled — proving the
+        // carrying its own CSSStyleSheet ctor, DOES get styled -- proving the
         // missing defaultView (not something else about the mock) caused the
         // fail-closed path above.
         const frame = makeRealm();
@@ -462,7 +462,7 @@ describe("fail-closed: root exists but cannot be fully styled (DOM touched, verd
         let result;
         assert.doesNotThrow(() => { result = engine.watch(el, "(min-width: 400px)", () => {}); });
         assert.strictEqual(result.initial, false);
-        assert.strictEqual(constructions, 0, "no sheet constructed — adoption support absent");
+        assert.strictEqual(constructions, 0, "no sheet constructed -- adoption support absent");
         assert.strictEqual(el.children.length, 1, "sentinel still appended");
     });
 
@@ -509,7 +509,7 @@ describe("fail-closed: root exists but cannot be fully styled (DOM touched, verd
         assert.doesNotThrow(() => { result = engine.watch(el, "(min-width: 400px)", () => {}); });
         assert.strictEqual(result.initial, false);
         assert.strictEqual(realm.doc.adoptedStyleSheets.length, 0,
-            "adoption never runs — the throw happens before `root.adoptedStyleSheets = ...`");
+            "adoption never runs -- the throw happens before `root.adoptedStyleSheets = ...`");
         assert.strictEqual(el.children.length, 1, "sentinel still appended");
     });
 
@@ -539,7 +539,7 @@ describe("fail-closed: root exists but cannot be fully styled (DOM touched, verd
         let result;
         assert.doesNotThrow(() => { result = engine.watch(el, "(min-width: 400px)", () => {}); });
         assert.strictEqual(result.initial, false, "cold-swapped to the constant-false reader");
-        assert.strictEqual(el.children.length, 1, "sentinel still appended — the rule/sheet ARE fine");
+        assert.strictEqual(el.children.length, 1, "sentinel still appended -- the rule/sheet ARE fine");
         assert.strictEqual(realm.doc.adoptedStyleSheets.length, 1, "sheet still adopted normally");
         assert.doesNotThrow(() => result.dispose());
     });

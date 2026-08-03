@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createMedia } from "../Media.js";
 
 // ---------------------------------------------------------------------------
-// LM-02 — the container-type: normal footgun warning
+// LM-02 -- the container-type: normal footgun warning
 // ---------------------------------------------------------------------------
 // The warning lives on the cold containerMedia() materialization path, reads
 // the watched element's computed container-type via getComputedStyle, and
@@ -12,7 +12,7 @@ import { createMedia } from "../Media.js";
 //
 // We drive it without a real DOM by stubbing globalThis.getComputedStyle and
 // passing a mock container engine, so this exercises the exact production code
-// path (the check is engine-independent — it runs before engine.watch).
+// path (the check is engine-independent -- it runs before engine.watch).
 
 // A mock element: `ct` is its computed container-type; `parent` is its
 // parentElement (null at the root).
@@ -20,7 +20,7 @@ function elem(ct, parent) {
     return { __ct: ct, parentElement: parent === undefined ? null : parent };
 }
 
-// Inert engine — the warning runs before this is touched.
+// Inert engine -- the warning runs before this is touched.
 function inertEngine() {
     return { watch() { return { initial: false, dispose() {} }; } };
 }
@@ -39,7 +39,7 @@ function installGetComputedStyle() {
     });
 }
 
-describe("LM-02 — container-type footgun warning", () => {
+describe("LM-02 -- container-type footgun warning", () => {
     beforeEach(() => {
         savedGCS = globalThis.getComputedStyle;
         savedWarn = console.warn;

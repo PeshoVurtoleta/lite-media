@@ -6,10 +6,10 @@ import {
 } from "../Media.js";
 
 // ---------------------------------------------------------------------------
-// containerStyle(el, prop, value) — Engine B's style()-query class (v1.3.0)
+// containerStyle(el, prop, value) -- Engine B's style()-query class (v1.3.0)
 // ---------------------------------------------------------------------------
 // containerStyle CONSTRUCTS the canonical condition `style(<prop>: <value>)`
-// and routes it through containerMedia — so it inherits the same engine,
+// and routes it through containerMedia -- so it inherits the same engine,
 // memoization, disposer and _flip seam. These tests drive the exact production
 // delegation via a mock container engine keyed by (el, query): if the engine
 // sees `style(--theme: dark)`, the construction is byte-correct.
@@ -71,7 +71,7 @@ function makeMockEngine() {
 // Construction & delegation
 // ---------------------------------------------------------------------------
 
-describe("containerStyle() — canonical construction & delegation", () => {
+describe("containerStyle() -- canonical construction & delegation", () => {
     beforeEach(() => __resetForTests());
 
     test("constructs the exact condition 'style(<prop>: <value>)'", () => {
@@ -102,10 +102,10 @@ describe("containerStyle() — canonical construction & delegation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Memoization — shares the containerMedia cache
+// Memoization -- shares the containerMedia cache
 // ---------------------------------------------------------------------------
 
-describe("containerStyle() — memoization", () => {
+describe("containerStyle() -- memoization", () => {
     beforeEach(() => __resetForTests());
 
     test("same (el, prop, value) returns the same signal, one watch", () => {
@@ -163,7 +163,7 @@ describe("containerStyle() — memoization", () => {
 // Reactivity
 // ---------------------------------------------------------------------------
 
-describe("containerStyle() — reactivity", () => {
+describe("containerStyle() -- reactivity", () => {
     beforeEach(() => __resetForTests());
 
     test("engine.flip() propagates to signal -> effect", () => {
@@ -199,10 +199,10 @@ describe("containerStyle() — reactivity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Validation — fail closed
+// Validation -- fail closed
 // ---------------------------------------------------------------------------
 
-describe("containerStyle() — validation", () => {
+describe("containerStyle() -- validation", () => {
     beforeEach(() => __resetForTests());
 
     function withEngine() {
@@ -242,7 +242,7 @@ describe("containerStyle() — validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// LM-04 — the footgun warning must stay silent for style() queries
+// LM-04 -- the footgun warning must stay silent for style() queries
 // ---------------------------------------------------------------------------
 // style() queries resolve against any ancestor and need no container-type, so
 // warning would be a false positive. A size query on the same element still
@@ -255,7 +255,7 @@ function inertEngine() {
     return { watch() { return { initial: false, dispose() {} }; } };
 }
 
-describe("LM-04 — no container-type warning for style() queries", () => {
+describe("LM-04 -- no container-type warning for style() queries", () => {
     let savedGCS, savedWarn, savedEnv, warnings;
 
     beforeEach(() => {
@@ -307,10 +307,10 @@ describe("LM-04 — no container-type warning for style() queries", () => {
 });
 
 // ---------------------------------------------------------------------------
-// SSR / off-DOM — inherits the containerMedia contract
+// SSR / off-DOM -- inherits the containerMedia contract
 // ---------------------------------------------------------------------------
 
-describe("containerStyle() — SSR / off-DOM", () => {
+describe("containerStyle() -- SSR / off-DOM", () => {
     beforeEach(() => __resetForTests());
 
     test("off-DOM (Node engine) returns a stable false signal, never throws", () => {
@@ -325,10 +325,10 @@ describe("containerStyle() — SSR / off-DOM", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Surfaces — scoped instance and module-level export both exist
+// Surfaces -- scoped instance and module-level export both exist
 // ---------------------------------------------------------------------------
 
-describe("containerStyle() — surfaces", () => {
+describe("containerStyle() -- surfaces", () => {
     beforeEach(() => __resetForTests());
 
     test("scoped createMedia() exposes containerStyle", () => {

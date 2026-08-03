@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { effect } from "@zakkster/lite-signal";
 import { media, configure, __resetForTests, stats } from "../Media.js";
 
-// Scale torture — this file's node budget targets ~700 signals, well below
+// Scale torture -- this file's node budget targets ~700 signals, well below
 // lite-signal's 1024 cap. Each Node --test subprocess starts fresh.
 
 function makeMockMM() {
@@ -27,10 +27,10 @@ function makeMockMM() {
     };
 }
 
-describe("torture · scale — many distinct queries", () => {
+describe("torture - scale -- many distinct queries", () => {
     beforeEach(() => __resetForTests());
 
-    test("400 distinct queries — all memoize independently", () => {
+    test("400 distinct queries -- all memoize independently", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const N = 400;
@@ -49,10 +49,10 @@ describe("torture · scale — many distinct queries", () => {
     });
 });
 
-describe("torture · scale — fanout to many subscribers", () => {
+describe("torture - scale -- fanout to many subscribers", () => {
     beforeEach(() => __resetForTests());
 
-    test("300 subscribers on one signal — one flip fans out to all", () => {
+    test("300 subscribers on one signal -- one flip fans out to all", () => {
         const mm = makeMockMM();
         configure({ matchMedia: mm.matchMedia });
         const s = media("(x)");
@@ -64,7 +64,7 @@ describe("torture · scale — fanout to many subscribers", () => {
         const baseline = runs;
         mm.flip("(x)", true);
         assert.strictEqual(runs - baseline, 300);
-        mm.flip("(x)", true); // dedupe — no new runs
+        mm.flip("(x)", true); // dedupe -- no new runs
         assert.strictEqual(runs - baseline, 300);
         mm.flip("(x)", false);
         assert.strictEqual(runs - baseline, 600);

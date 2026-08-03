@@ -1,10 +1,10 @@
 /**
- * @zakkster/lite-media v1.4.0
+ * @zakkster/lite-media v1.4.1
  *
  * Reactive media & preference signals. v1.1.0 adds:
- *   - createMedia({ matchMedia, ssrDefault, containerEngine }) — scoped
+ *   - createMedia({ matchMedia, ssrDefault, containerEngine }) -- scoped
  *     instances with their own memoization cache, unblocking per-request SSR.
- *   - containerMedia(el, query) — Engine B: browser-native container-query
+ *   - containerMedia(el, query) -- Engine B: browser-native container-query
  *     verdicts via an injected `@container` rule + zero-size sentinel +
  *     `transitionrun` on a registered `<custom-ident>` custom property.
  *
@@ -13,14 +13,14 @@
  * invariant, and adds the __flipForTests container seam. No new runtime API.
  *
  * v1.2.0 adds:
- *   - breakpoints({ name: minWidthPx }) — a named responsive band map compiled
+ *   - breakpoints({ name: minWidthPx }) -- a named responsive band map compiled
  *     to ONE interned-token computed<string> (the active band name). Reads are
  *     zero-alloc; a band change notifies downstream exactly once.
- *   - standaloneDisplay() and highDynamicRange() — the final two of the ten
+ *   - standaloneDisplay() and highDynamicRange() -- the final two of the ten
  *     curated preference signals.
  *
  * v1.3.0 adds:
- *   - containerStyle(el, prop, value) — Engine B's style()-query class: a
+ *   - containerStyle(el, prop, value) -- Engine B's style()-query class: a
  *     Signal<boolean> for `@container style(<prop>: <value>)`. Constructs the
  *     condition and routes it through the SAME sentinel engine as
  *     containerMedia(); no new evaluator, no query parser. Unlike a size query,
@@ -38,6 +38,18 @@
  *   A root that can't be styled fails closed to a stuck-false signal, never
  *   throwing. The per-root sheet map is a WeakMap so detached roots are not pinned.
  *
+ * v1.4.1 (bfcache / pageshow lifecycle) pins a per-instance answer across a
+ *   back/forward-cache restore. A page restored from bfcache does NOT re-fire
+ *   matchMedia `change` or container `transitionrun`, so a signal can sit stale
+ *   against a preference or verdict that changed while the page was frozen. Each
+ *   instance now lazily attaches ONE `pageshow` listener (on the first media()/
+ *   containerMedia()) that no-ops unless `event.persisted === true`, then
+ *   re-reads every watched mql.matches (Engine A) and every live sentinel's
+ *   computed --lm-v (Engine B) and re-pushes the fresh boolean through the SAME
+ *   set path a real event uses. Every read is fail-closed and page-lifetime;
+ *   nothing is torn down. The hot read/flip paths are unchanged and stay
+ *   0-alloc. No new public API (the seam is the internal __pageshowForTests).
+ *
  * The v1.0 module-level API (`media`, `configure`, `stats`, preferences,
  * `__resetForTests`) is preserved. Internally it now delegates to a lazily
  * created default instance; `configure()` mutates that instance's options
@@ -46,7 +58,7 @@
  * Design in one line, unchanged: JS never evaluates a query. The browser
  * evaluates; lite-media only observes the verdict and pushes a boolean into
  * the graph. Engine B follows the same rule via CSS custom-property
- * transitions — never a JS query parser.
+ * transitions -- never a JS query parser.
  *
  * Copyright (c) Zahary Shinikchiev. MIT licensed.
  */
@@ -78,7 +90,7 @@ const Q_HIGH_DYNAMIC_RANGE   = "(dynamic-range: high)";
 // SSR / no-DOM contract (pinned v1.1.2): containerMedia() off-DOM returns a
 // stable `false` signal, never throwing. A container's size cannot be known
 // server-side, and `false` ("container does not match this size") is the
-// conservative, fail-closed verdict — it renders the not-yet-sized layout.
+// conservative, fail-closed verdict -- it renders the not-yet-sized layout.
 // This deliberately differs from media(), which throws without ssrDefault:
 // a media feature (dark mode, reduced motion) has no safe default to assume,
 // but an unmeasured container does. ssrDefault does NOT apply to this path.
@@ -96,29 +108,29 @@ function FALSE_READER() { return false; }
 
 // Shared, frozen empty id-set for the fail-closed root stub. A null/foreign root
 // returns an inert stub that never reaches ensureRule (watch() bails on
-// state.doc === null), so it needs no per-root Set — one immutable instance
+// state.doc === null), so it needs no per-root Set -- one immutable instance
 // avoids a needless cold-path allocation. Frozen so a stray add() fails loud.
 const EMPTY_IDS = Object.freeze(new Set());
 
 // ---------------------------------------------------------------------------
-// Dev-only diagnostics (LM-02) — the container-type footgun warning
+// Dev-only diagnostics (LM-02) -- the container-type footgun warning
 // ---------------------------------------------------------------------------
 // The call site (in containerMedia) guards this with the standard inline env
 // check `typeof process !== "undefined" && process.env.NODE_ENV !==
 // "production"`, so a bundler that defines process.env.NODE_ENV folds the
 // condition to `false` and dead-code-eliminates the whole block from a
 // production build. In Node it is a cheap env read on the COLD materialization
-// path only — never on the hot signal read. We WARN, never mutate: setting
+// path only -- never on the hot signal read. We WARN, never mutate: setting
 // container-type changes sizing semantics and that is the caller's decision.
 
 // An unnamed @container query resolves against the nearest ANCESTOR that is a
 // query container (container-type: size | inline-size). If the watched element
 // and every ancestor compute to `container-type: normal`, no query container
-// exists, the query can never match, and the signal stays false forever — the
+// exists, the query can never match, and the signal stays false forever -- the
 // classic silent-mismatch footgun. Warn once per offending element.
 function warnIfNoQueryContainer(el, query, warned) {
     // LM-04: a style() container query resolves against the nearest ANCESTOR
-    // element regardless of its container-type — it does NOT need a size query
+    // element regardless of its container-type -- it does NOT need a size query
     // container (container-type: size | inline-size). So the missing-container
     // footgun simply does not apply, and warning would be a false positive.
     // Skip any condition that begins with `style(`: that is every
@@ -142,7 +154,7 @@ function warnIfNoQueryContainer(el, query, warned) {
         } catch (_e) {
             return; // getComputedStyle threw (foreign/detached node): stay silent
         }
-        if (ct !== "" && ct !== "normal") return; // a query container exists — no footgun
+        if (ct !== "" && ct !== "normal") return; // a query container exists -- no footgun
         node = (node.parentElement != null) ? node.parentElement : null;
         depth++;
     }
@@ -167,7 +179,7 @@ const LM_BASE_CSS =
     + "pointer-events:none;visibility:hidden;overflow:hidden;contain:strict}";
 
 // The browser engine is built as a factory so its state (query registry, per-root
-// sheets) is fresh per createMedia() call — normally there's just one, but tests
+// sheets) is fresh per createMedia() call -- normally there's just one, but tests
 // can construct isolated instances.
 //
 // Multi-root (v1.4.0): a container element can live in the main document, in a
@@ -188,16 +200,27 @@ function makeBrowserContainerEngine() {
 
     // Roots-bounds invariant (v1.4.0; mirrors createMedia's registry-bounds
     // invariant on `cache`): this holds one sheet state per LIVE root the engine
-    // has styled. It is a WeakMap, NOT a Map, on purpose — a strong Map would pin
+    // has styled. It is a WeakMap, NOT a Map, on purpose -- a strong Map would pin
     // every detached shadow root and dead iframe document for the page lifetime, a
     // retention class the leak law forbids. Nothing iterates it, so a WeakMap is
     // strictly correct: a live root keeps its sheet (the don't-rebuild behavior),
     // a dropped root is collected together with its sheet. A root's sheet and its
     // inserted rules are RETAINED on last dispose (never removed on teardown; a
-    // re-watch of that root reuses the same sheet) — bounded by concurrent root
+    // re-watch of that root reuses the same sheet) -- bounded by concurrent root
     // count, not by watcher count.
     /** @type {WeakMap<object, { doc: any, view: any, sheet: any, ids: Set<number> }>} */
     const roots = new WeakMap();
+
+    // v1.4.1 bfcache: live verdict readers, one per successful watch(). resync()
+    // re-reads each verdict and re-pushes it through the same onChange a
+    // `transitionrun` would call -- the only path by which a container verdict
+    // that changed while the page was frozen reaches the graph on restore. This
+    // is a STRONG-ref Set on purpose (nothing iterates it lazily), so dispose()
+    // MUST delete its entry: a forgotten delete would pin the record -> verdict
+    // -> computed style -> sentinel for the page lifetime. The torture live-set
+    // tier is the guard for that.
+    /** @type {Set<{ verdict: () => boolean, onChange: (m: boolean) => void }>} */
+    const live = new Set();
 
     function ensureRegisteredProperty() {
         if (propertyRegistered) return;
@@ -232,7 +255,7 @@ function makeBrowserContainerEngine() {
     // memoizes the fail-closed verdict for a root we can't fully style (Ctor
     // unavailable, no adoptedStyleSheets support, or a throwing construct/adopt):
     // never retried, never thrown. doc===null means there's no styleable document
-    // at all (null/foreign root) — watch() then returns an inert stub without
+    // at all (null/foreign root) -- watch() then returns an inert stub without
     // touching the DOM. Every risky step is wrapped so a hostile/foreign root
     // degrades to a stuck-false signal instead of throwing out of watch().
     function getRootState(root) {
@@ -245,7 +268,7 @@ function makeBrowserContainerEngine() {
         const view = (doc !== null && typeof doc === "object") ? doc.defaultView : null;
         // Construct the sheet in the ROOT's OWN realm so adoption can't throw
         // across realms. The global CSSStyleSheet fallback is allowed ONLY for the
-        // main document's own realm — never adopt a wrong-realm sheet.
+        // main document's own realm -- never adopt a wrong-realm sheet.
         let Ctor = (view && typeof view.CSSStyleSheet === "function")
             ? view.CSSStyleSheet
             : null;
@@ -287,7 +310,7 @@ function makeBrowserContainerEngine() {
             state.ids.add(id);
             // Inside a matching @container, flip verdict to `on` with an
             // allow-discrete transition so `transitionrun` fires per flip.
-            // 0.001ms is deliberately below-frame — verdict propagates
+            // 0.001ms is deliberately below-frame -- verdict propagates
             // immediately; we don't need duration, we need the event.
             const rule = "@container " + query + "{"
                 + ".__lm-s[data-q=\"" + id + "\"]{--lm-v:on;"
@@ -339,11 +362,16 @@ function makeBrowserContainerEngine() {
 
             // The browser fires `transitionrun` for a discrete-transition
             // property when its value changes. That's our verdict-flip
-            // signal — one event, one push.
+            // signal -- one event, one push.
             function handler(e) {
                 if (e.propertyName === "--lm-v") onChange(verdict());
             }
             sentinel.addEventListener("transitionrun", handler);
+
+            // v1.4.1: register this reader for bfcache resync. Deleted on
+            // dispose (below) so `live` never outlives the watcher.
+            const rec = { verdict: verdict, onChange: onChange };
+            live.add(rec);
 
             let disposed = false;
             return {
@@ -351,6 +379,7 @@ function makeBrowserContainerEngine() {
                 dispose() {
                     if (disposed) return;
                     disposed = true;
+                    live.delete(rec); // FIRST: drop the strong ref, always
                     sentinel.removeEventListener("transitionrun", handler);
                     if (sentinel.parentNode !== null) {
                         sentinel.parentNode.removeChild(sentinel);
@@ -358,6 +387,24 @@ function makeBrowserContainerEngine() {
                 },
             };
         },
+        // v1.4.1 bfcache: re-read every live verdict and re-push it. A restored
+        // page never re-fires `transitionrun`, so this is the only route by which
+        // a verdict that changed while the page was frozen reaches the graph.
+        // Fail-closed per entry: a throwing read or onChange never aborts the
+        // loop or throws out to the caller (never throw on an unverified state).
+        resync() {
+            for (const rec of live) {
+                let v;
+                try { v = rec.verdict(); } catch (_e) { continue; }
+                try { rec.onChange(v); } catch (_e) { /* keep going */ }
+            }
+        },
+        // @internal test-only seam: the live-set size, read DIRECTLY and
+        // deterministically (no GC-finalization timing). The torture retention
+        // gate asserts this returns to 0 after dispose -- it trips the instant
+        // dispose() forgets its live.delete, which a finalization proxy cannot
+        // guarantee to catch.
+        _liveSize() { return live.size; },
     };
 }
 
@@ -372,7 +419,7 @@ function detectDefaultContainerEngine() {
 }
 
 // ---------------------------------------------------------------------------
-// breakpoints() — named responsive bands as one interned-token signal
+// breakpoints() -- named responsive bands as one interned-token signal
 // ---------------------------------------------------------------------------
 // A breakpoint map { name: minWidthPx } compiles to ONE computed<string> whose
 // value is the active band: the name of the highest-threshold entry whose
@@ -381,14 +428,14 @@ function detectDefaultContainerEngine() {
 // the tokens the computed returns, so an unchanged band yields the SAME string
 // reference and the computed's === equality makes downstream effects run
 // exactly once per real band change. We CONSTRUCT each `(min-width: Npx)` query
-// and observe it through media() — never a JS width comparison — so a band flip
+// and observe it through media() -- never a JS width comparison -- so a band flip
 // inherits the media path's proven allocation profile and the sentinel thesis
 // ("JS never evaluates a query") holds here too.
 
 // Validate a breakpoint map and return { key, names, thresholds } sorted
 // ascending by threshold. Runs once per DISTINCT map on the cold compile path
 // (the returned computed is memoized on `key`), so the allocation here is not
-// on any hot path. Fails loud on a malformed map — an unmeasured band is a
+// on any hot path. Fails loud on a malformed map -- an unmeasured band is a
 // silent-mismatch footgun of exactly the kind lite-media exists to prevent.
 function normalizeBreakpoints(map) {
     if (map === null || typeof map !== "object") {
@@ -430,16 +477,16 @@ function normalizeBreakpoints(map) {
 }
 
 // ---------------------------------------------------------------------------
-// createMedia — the fundamental factory
+// createMedia -- the fundamental factory
 // ---------------------------------------------------------------------------
 // Each instance carries its own memoization cache and options. Scoped
-// instances DO NOT lock — they're throwaway by design, per-request or
+// instances DO NOT lock -- they're throwaway by design, per-request or
 // per-test. The module-level default instance implements v1.0's lock
 // semantics on top of this primitive.
 
 /**
  * Create a scoped lite-media instance. Options are set at creation and can't
- * be reconfigured — that's the point. For per-request SSR, create a new
+ * be reconfigured -- that's the point. For per-request SSR, create a new
  * instance per request; for tests, create a fresh instance per test.
  *
  * @param {{
@@ -474,15 +521,24 @@ export function createMedia(opts) {
     }
 
     // Registry-bounds invariant (pinned v1.1.2): this per-instance Map is the
-    // ONE unbounded structure in the module — it grows by one entry per DISTINCT
+    // ONE unbounded structure in the module -- it grows by one entry per DISTINCT
     // query string, never per call (repeat calls hit the memo). The contract is
     // that an app's query vocabulary is small and static (a handful of
     // breakpoints + the fixed preference set), so the Map reaches a low steady
     // size and stops. Feeding it unbounded distinct query strings grows it
-    // without bound BY DESIGN — same call lite-router's queryParam memo made:
+    // without bound BY DESIGN -- same call lite-router's queryParam memo made:
     // documented invariant + test, not a runtime cap. Torture: registry-bounds.
     /** @type {Map<string, any>} */
     const cache = new Map();
+    // v1.4.1 bfcache: sibling of `cache`, keyed by the SAME query string -> the
+    // live MediaQueryList. Populated on media()'s cold path only (never on a
+    // cache hit, so the hot read is untouched). _resync() re-reads each
+    // mql.matches and re-pushes it through the signal's set -- the same path
+    // media()'s `change` handler uses. Bounded exactly like `cache`: one entry
+    // per DISTINCT query, never per call. ssrDefault signals have no mql and are
+    // never added, so resync skips them.
+    /** @type {Map<string, any>} */
+    const mqls = new Map();
     // breakpoints() memo, keyed by the canonical map key (see
     // normalizeBreakpoints). Same registry-bounds contract as `cache`: one
     // entry per DISTINCT breakpoint set, and an app's set of band maps is
@@ -501,19 +557,23 @@ export function createMedia(opts) {
     // Test-only seam (LM-03): maps a container signal to the engine onChange
     // that drives it, so __flipForTests()/_flip() can simulate a verdict flip
     // on the default instance (which uses the real node/browser engine, not a
-    // mock). Keyed by signal identity, off the signal's shape — same reasoning
+    // mock). Keyed by signal identity, off the signal's shape -- same reasoning
     // as containerDisposers below.
     /** @type {WeakMap<any, (matches: boolean) => void>} */
     const containerOnChange = new WeakMap();
     // Per-instance disposers keyed by signal identity. Kept off the signal
     // object so containerMedia() and media() signals share the same V8
-    // hidden class — critical for monomorphic effect() call sites that read
+    // hidden class -- critical for monomorphic effect() call sites that read
     // both kinds. Ready for a future explicit dispose API without a v1.1
     // signal-shape churn.
     /** @type {WeakMap<any, () => void>} */
     const containerDisposers = new WeakMap();
     /** @type {((q: string) => any) | null} */
     let boundNative = null;
+    // v1.4.1 bfcache: this instance attaches ONE `pageshow` listener, lazily, on
+    // its first media()/containerMedia(). Guard flag => at most once per
+    // instance; SSR/no-DOM (no addEventListener) sets the flag and does nothing.
+    let pageshowAttached = false;
 
     function resolveMatchMedia() {
         if (matchMediaFactory !== undefined) return matchMediaFactory;
@@ -532,9 +592,51 @@ export function createMedia(opts) {
         return containerEngine;
     }
 
+    // v1.4.1 bfcache: re-pin every watched answer. Engine A re-reads each mql and
+    // re-pushes its verdict; Engine B delegates to the engine's own resync. Each
+    // Engine-A entry is fail-closed (a throwing matches getter or set must not
+    // abort the rest or escape). sig.set dedups an unchanged value to a no-op, so
+    // an UNCHANGED restore fires zero downstream runs and retains 0 B; a value
+    // that changed while the page was frozen fires exactly one run. Cold path
+    // only -- never on a hot read.
+    function _resync() {
+        for (const query of mqls.keys()) {
+            try {
+                const mql = mqls.get(query);
+                const sig = cache.get(query);
+                if (sig !== undefined && mql !== undefined) {
+                    sig.set(mql.matches === true);
+                }
+            } catch (_e) { /* fail-closed per entry */ }
+        }
+        const eng = containerEngine;
+        if (eng !== null && typeof eng.resync === "function") {
+            try { eng.resync(); } catch (_e) { /* fail-closed */ }
+        }
+    }
+
+    // The `pageshow` listener body. Only a bfcache restore (persisted === true)
+    // re-pins the answer; an ordinary navigation pageshow is a no-op (nothing
+    // went stale). NOT visibilitychange -- a tab hidden/shown in place keeps
+    // firing live change/transitionrun events, so it needs no resync.
+    function onPageshow(e) {
+        if (!e || e.persisted !== true) return;
+        _resync();
+    }
+
+    function ensurePageshow() {
+        if (pageshowAttached) return;
+        pageshowAttached = true; // at most once, even on SSR (then a no-op)
+        if (typeof globalThis !== "undefined"
+            && typeof globalThis.addEventListener === "function") {
+            globalThis.addEventListener("pageshow", onPageshow);
+        }
+    }
+
     function media(query) {
         let sig = cache.get(query);
         if (sig !== undefined) return sig;
+        ensurePageshow(); // cold path only; hot cache hit returned above
         const mm = resolveMatchMedia();
         if (mm === null) {
             if (ssrDefault === undefined) {
@@ -568,6 +670,7 @@ export function createMedia(opts) {
         mql.addEventListener("change", handler);
         sig = signal(initial);
         cache.set(query, sig);
+        mqls.set(query, mql); // sibling entry for bfcache resync (cold path)
         return sig;
     }
 
@@ -589,6 +692,7 @@ export function createMedia(opts) {
         }
         let sig = elCache.get(query);
         if (sig !== undefined) return sig;
+        ensurePageshow(); // cold path only; hot cache hit returned above
 
         // Dev-only footgun check (LM-02). The `typeof process` guard keeps
         // unbundled browsers safe (short-circuits before touching process.env),
@@ -604,7 +708,7 @@ export function createMedia(opts) {
         // Two-phase init: engine returns `initial` synchronously and MUST
         // NOT invoke onChange until after `watch` returns. Engines that
         // need to signal a sync state change during watch() should fold it
-        // into `initial` — the `sig` reference does not exist yet, so a
+        // into `initial` -- the `sig` reference does not exist yet, so a
         // sync call to onChange here silently drops the flip.
         const onChange = (matches) => {
             if (sig !== undefined) sig.set(matches);
@@ -614,7 +718,7 @@ export function createMedia(opts) {
         // Disposers live in a per-instance WeakMap keyed by signal identity,
         // NOT as a property on the signal. Tagging the signal object would
         // give containerMedia() signals a different V8 hidden class than
-        // media() signals — any shared effect() reading both would go
+        // media() signals -- any shared effect() reading both would go
         // polymorphic. Kept off the shape for zero divergence.
         containerDisposers.set(sig, dispose);
         containerOnChange.set(sig, onChange);
@@ -625,7 +729,7 @@ export function createMedia(opts) {
     // containerStyle(el, prop, value) -> Signal<boolean> for a container STYLE
     // query: is `prop` computed to `value` on el's nearest ancestor container?
     // Constructs the canonical condition `style(<prop>: <value>)` and routes it
-    // through containerMedia — so it inherits the exact engine, memoization,
+    // through containerMedia -- so it inherits the exact engine, memoization,
     // disposer, _flip seam and 0-B/flip allocation profile. We CONSTRUCT the
     // condition (never parse one), and we never register the caller's property
     // (only --lm-v is ours), so the "no query parsing" thesis and the
@@ -690,7 +794,7 @@ export function createMedia(opts) {
         }
         // Active band = highest-index boundary that matches; else the floor
         // (index 0, the smallest threshold). The scan reads pre-built arrays
-        // and returns a stored token — no allocation on the hot read path.
+        // and returns a stored token -- no allocation on the hot read path.
         // Index 0 is never read here: it is the unconditional floor, so we
         // neither track it nor pay for a boundary that would only flip below
         // the smallest declared width. `names` holds stable string references,
@@ -712,7 +816,7 @@ export function createMedia(opts) {
             bands: breakpointsCache.size,
             // Only user-supplied config counts as "configured". A lazily-
             // resolved default engine (detectDefaultContainerEngine on first
-            // containerMedia call) does not flip this bit — otherwise merely
+            // containerMedia call) does not flip this bit -- otherwise merely
             // *using* the instance would look like the user configured it.
             configured: matchMediaFactory !== undefined
                 || ssrDefault !== undefined
@@ -738,16 +842,21 @@ export function createMedia(opts) {
         highDynamicRange()    { return media(Q_HIGH_DYNAMIC_RANGE); },
         stats,
         _flip,
+        // v1.4.1 test-only seams (LM bfcache). _resync() runs the raw resync
+        // path (no event object); _pageshow(persisted) exercises the exact gated
+        // listener body a real `pageshow` would. See __pageshowForTests.
+        _resync,
+        _pageshow(persisted) { onPageshow({ persisted: persisted }); },
     };
 }
 
 // ---------------------------------------------------------------------------
-// Default instance — v1.0 module-level surface with lock semantics
+// Default instance -- v1.0 module-level surface with lock semantics
 // ---------------------------------------------------------------------------
 // Configuration accumulates in module-scope slots. The instance is (re-)built
 // on first materialization, capturing whatever configure() has set. Once a
 // materialization succeeds, the lock engages and further configure() throws.
-// A failed materialization does NOT lock — same recoverable contract as v1.0.
+// A failed materialization does NOT lock -- same recoverable contract as v1.0.
 
 let _defaultMatchMedia = undefined;
 let _defaultSsrDefault = undefined;
@@ -851,7 +960,7 @@ export function breakpoints(map) {
     return result;
 }
 
-// Preference shortcuts — delegate through the module-level media() so the
+// Preference shortcuts -- delegate through the module-level media() so the
 // lock semantics apply uniformly.
 export function reducedMotion()       { return media(Q_REDUCED_MOTION); }
 export function darkScheme()          { return media(Q_DARK_SCHEME); }
@@ -878,7 +987,7 @@ export function stats() {
     };
 }
 
-/** @internal — test-only. Resets ALL default-instance state including engine. */
+/** @internal -- test-only. Resets ALL default-instance state including engine. */
 export function __resetForTests() {
     _defaultMatchMedia = undefined;
     _defaultSsrDefault = undefined;
@@ -888,7 +997,7 @@ export function __resetForTests() {
 }
 
 /**
- * @internal — test-only escape hatch. NOT part of the semver contract.
+ * @internal -- test-only escape hatch. NOT part of the semver contract.
  * Simulate a container verdict flip on the default instance by routing
  * `matches` through the engine onChange that owns `sig`. Materializing the
  * default instance if needed; throws if `sig` is not one of its container
@@ -899,7 +1008,7 @@ export function __flipForTests(sig, matches) {
 }
 
 /**
- * @internal — test-only escape hatch. NOT part of the semver contract.
+ * @internal -- test-only escape hatch. NOT part of the semver contract.
  * Returns a fresh browser container engine (the same factory
  * detectDefaultContainerEngine picks in a browser realm), so the v1.4.0
  * multi-root watch/dispose contract can be exercised directly against a mock
@@ -908,4 +1017,16 @@ export function __flipForTests(sig, matches) {
  */
 export function __browserEngineForTests() {
     return makeBrowserContainerEngine();
+}
+
+/**
+ * @internal -- test-only escape hatch. NOT part of the semver contract.
+ * Synthesize a `pageshow` on the default instance with the given `persisted`
+ * flag and run the exact gated listener body (v1.4.1 bfcache). persisted !==
+ * true is a no-op; persisted === true re-pins every Engine A mql verdict and
+ * every Engine B sentinel verdict, so tests exercise the restore path with no
+ * real browser. Mirrors __flipForTests. Materializes the default instance.
+ */
+export function __pageshowForTests(persisted) {
+    return ensureDefault()._pageshow(persisted);
 }

@@ -7,7 +7,7 @@ import {
 } from "../Media.js";
 
 // ---------------------------------------------------------------------------
-// LM-03 — the __flipForTests / _flip container seam
+// LM-03 -- the __flipForTests / _flip container seam
 // ---------------------------------------------------------------------------
 // The seam routes a simulated verdict through the exact engine onChange that
 // drives the signal, so a test can flip a container verdict on the DEFAULT
@@ -15,7 +15,7 @@ import {
 // browser. Works with any engine, including the node inert engine, because it
 // drives lite-media's own onChange, not the engine's internals.
 
-describe("LM-03 — __flipForTests seam (default instance)", () => {
+describe("LM-03 -- __flipForTests seam (default instance)", () => {
     beforeEach(() => __resetForTests());
 
     test("flips a container signal on the default instance, off-DOM", () => {

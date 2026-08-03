@@ -6,7 +6,7 @@ import {
 } from "../Media.js";
 
 // ---------------------------------------------------------------------------
-// makeMockEngine — deterministic container engine for tests
+// makeMockEngine -- deterministic container engine for tests
 // ---------------------------------------------------------------------------
 // Mirrors the browser-engine contract: watch() returns { initial, dispose }
 // and stores the onChange callback so the test can trigger flips via
@@ -63,10 +63,10 @@ function makeMockEngine() {
 }
 
 // ---------------------------------------------------------------------------
-// containerMedia() — default instance path via configure({ containerEngine })
+// containerMedia() -- default instance path via configure({ containerEngine })
 // ---------------------------------------------------------------------------
 
-describe("containerMedia() — default instance", () => {
+describe("containerMedia() -- default instance", () => {
     beforeEach(() => __resetForTests());
 
     test("returns a signal that reflects initial engine verdict", () => {
@@ -78,7 +78,7 @@ describe("containerMedia() — default instance", () => {
         assert.strictEqual(s(), true);
     });
 
-    test("memoizes per (element, query) pair — same instance returned", () => {
+    test("memoizes per (element, query) pair -- same instance returned", () => {
         const engine = makeMockEngine();
         const el = { id: "el-1" };
         configure({ containerEngine: engine, ssrDefault: false });
@@ -109,7 +109,7 @@ describe("containerMedia() — default instance", () => {
         assert.strictEqual(engine.watchCount(), 2);
     });
 
-    test("engine.flip() propagates to signal → effect", () => {
+    test("engine.flip() propagates to signal -> effect", () => {
         const engine = makeMockEngine();
         const el = { id: "el-1" };
         configure({ containerEngine: engine, ssrDefault: false });
@@ -122,13 +122,13 @@ describe("containerMedia() — default instance", () => {
         engine.flip(el, "(min-width: 400px)", true);
         assert.strictEqual(last, true);
         assert.strictEqual(runs, 2);
-        engine.flip(el, "(min-width: 400px)", true); // redundant — dedupe
+        engine.flip(el, "(min-width: 400px)", true); // redundant -- dedupe
         assert.strictEqual(runs, 2);
         stop();
     });
 });
 
-describe("containerMedia() — argument validation", () => {
+describe("containerMedia() -- argument validation", () => {
     beforeEach(() => __resetForTests());
 
     test("null element throws TypeError", () => {
@@ -177,7 +177,7 @@ describe("containerMedia() — argument validation", () => {
     });
 });
 
-describe("containerMedia() — element garbage collection", () => {
+describe("containerMedia() -- element garbage collection", () => {
     beforeEach(() => __resetForTests());
 
     test("containerMedia signals share V8 hidden class with media() signals", () => {
@@ -227,17 +227,17 @@ describe("containerMedia() — element garbage collection", () => {
     });
 });
 
-describe("containerMedia() — SSR / node inert engine", () => {
+describe("containerMedia() -- SSR / node inert engine", () => {
     beforeEach(() => __resetForTests());
 
-    test("no engine configured, no DOM → default (Node inert) engine returns false forever", () => {
+    test("no engine configured, no DOM -> default (Node inert) engine returns false forever", () => {
         // In Node, detectDefaultContainerEngine picks the node inert engine.
         // No configure() call: containerMedia uses that default.
         configure({ ssrDefault: false });
         const el = {};
         const s = containerMedia(el, "(min-width: 400px)");
         assert.strictEqual(s(), false);
-        // No way to flip it — node engine's onChange is never called.
+        // No way to flip it -- node engine's onChange is never called.
         // Just assert the API is inert, not broken.
         assert.strictEqual(typeof s, "function");
     });

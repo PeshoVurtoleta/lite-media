@@ -18,7 +18,13 @@
 > keep one constructed @container sheet per root (main document, shadow root, or
 > cross-realm iframe document), adopted into that root and built in that root's
 > own realm. No API change; one --lm-v across roots; fail-closed per root; the
-> per-root sheet map is a WeakMap so detached roots are not pinned.
+> per-root sheet map is a WeakMap so detached roots are not pinned. v1.4.1 adds
+> a bfcache / pageshow lifecycle audit: a page restored from the back/forward
+> cache re-fires no change/transitionrun, so each instance lazily attaches one
+> pageshow listener that (on persisted restore only) re-reads every mql.matches
+> (Engine A) and every live sentinel verdict (Engine B) and re-pushes the fresh
+> boolean through the same sig.set a real event uses. Fail-closed per entry,
+> page-lifetime, 0 B on an unchanged restore. No public API change.
 
 ## Design in one line
 
@@ -46,8 +52,9 @@ Consequences:
 | Cold materialize (mock MQL, cache miss)     | 1.6 M ops/s     | 624 ns         |
 | createMedia() + 5 signals wired             | 674 K ops/s     | 1.48 μs        |
 
-Bundle size: ~3,265 B min+gz for the full module (esbuild + gzip -9, lite-signal
-external; +~316 B over 1.3.0 for the v1.4.0 per-root resolution). The dev-only
+Bundle size: ~3,529 B min+gz for the full module (esbuild + gzip -9, lite-signal
+external; +~264 B over 1.4.0 for the v1.4.1 bfcache resync + pageshow wiring).
+The dev-only
 container-type warning sits behind a `process.env.NODE_ENV !== "production"`
 guard, so a production build drops it. Run `npm run bench` locally; the harness
 prints a machine stamp so results are reproducible. Allocation claims are
@@ -56,7 +63,7 @@ media, container AND style paths, 0 B per breakpoints band change, 0 B per
 stable-band read, 0 ArrayBuffer growth, 0 major GC across a 100-signal x
 2000-toggle storm. Every gate ships a control that fails it.
 
-## Public API (v1.4.0)
+## Public API (v1.4.1)
 
     import { signal, effect } from "@zakkster/lite-signal";
     import {
@@ -65,8 +72,15 @@ stable-band read, 0 ArrayBuffer growth, 0 major GC across a 100-signal x
         reducedMotion, darkScheme, hoverCapable, coarsePointer,
         forcedColors, moreContrast, reducedData, reducedTransparency,
         standaloneDisplay, highDynamicRange,
-        __resetForTests, __flipForTests,
+        __resetForTests, __flipForTests, __pageshowForTests,
     } from "@zakkster/lite-media";
+
+The public runtime surface is unchanged from v1.4.0. v1.4.1 adds only the
+internal __pageshowForTests(persisted) seam (mirrors __flipForTests): synthesize
+a pageshow with the given persisted flag on the default instance and run the
+exact gated resync body, so a bfcache restore is testable with no real browser.
+On a restore, lite-media re-reads every live verdict and re-pushes it; there is
+nothing new to call from application code.
 
 ### media(query: string): MediaSignal
 
@@ -324,7 +338,9 @@ stylesheet — untrusted input is XSS-adjacent.
     transitionrun event → sig.set           | 0 hot-path
     Redundant event (same value)            | 0 (Object.is dedup)
     Preference shortcut call                | 0 additional
-    createMedia(opts) call                  | 1 instance + 1 Map + 1 WeakMap
+    bfcache resync — unchanged restore      | 0 retained (every sig.set dedups)
+    bfcache resync — changed verdict        | 0 additional (one sig.set per move)
+    createMedia(opts) call                  | 1 instance + 2 Maps + 1 WeakMap
 
 Cost scales with verdict flips, not with browser events.
 
@@ -409,8 +425,12 @@ Not a runtime error, just graceful degradation.
 - 1.4.0 — Multi-root Engine B: shadow DOM + cross-realm iframe. One constructed
           sheet per root, adopted into that root, built in that root's realm; one
           --lm-v across roots; fail-closed per root; interleaved-dispose torture
-          committed. [current]
-- 1.4.1 — bfcache / pagehide lifecycle audit (a pinned answer per event).
+          committed.
+- 1.4.1 — bfcache / pageshow lifecycle audit: a persisted pageshow re-pins every
+          Engine A mql verdict and every Engine B sentinel verdict through the
+          same sig.set a real event uses. 0 B on an unchanged restore, fail-closed
+          per entry; bfcache resync + live-set retention torture committed.
+          [current]
 - 1.5.0 — Ecosystem wiring: lite-ambient-fx & lite-scratch-fx consume
           reducedMotion via watchEffect rAF gate; lite-hueforge pairs
           moreContrast / forcedColors with APCA role-floor selection.
@@ -420,12 +440,13 @@ B collapses to a feature-detected bridge with unchanged signal-graph surface.
 
 ## File layout
 
-    Media.js       — single-file ESM implementation (~911 lines)
+    Media.js       — single-file ESM implementation (~1032 lines)
     Media.d.ts     — TypeScript declarations
-    test/01…17-*.test.mjs      — 171 tests across 17 files
+    test/01…19-*.test.mjs      — 196 tests across 19 files
     test/torture.mjs — the proof gate (node --expose-gc): committed 0-B numbers
     bench/bench.mjs — machine-stamped benchmark harness
-    demo/index.html — 6-scene oscilloscope demo
+    demo/index.html — oscilloscope demo (preferences, breakpoints, containerStyle,
+                      shadow-root containerMedia, bfcache resync)
     README.md, llms.txt, LICENSE.txt, CHANGELOG.md
 
 ## Install

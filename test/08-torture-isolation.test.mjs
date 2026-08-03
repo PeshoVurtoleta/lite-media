@@ -27,10 +27,10 @@ function makeMockMM() {
     };
 }
 
-describe("torture · isolation — many createMedia instances", () => {
+describe("torture - isolation -- many createMedia instances", () => {
     beforeEach(() => __resetForTests());
 
-    test("30 createMedia instances × 6 queries each — total isolation", () => {
+    test("30 createMedia instances × 6 queries each -- total isolation", () => {
         const N_INST = 30, N_Q = 6;
         const insts = [];
         const mms = [];
@@ -48,9 +48,9 @@ describe("torture · isolation — many createMedia instances", () => {
         }
     });
 
-    test("50 scoped createMedia() invocations — each returns fresh", () => {
+    test("50 scoped createMedia() invocations -- each returns fresh", () => {
         // Each scoped() creates 4 signals; if V8 GCs between iterations they
-        // don't accumulate. If it doesn't, worst-case is 200 signals — still
+        // don't accumulate. If it doesn't, worst-case is 200 signals -- still
         // safely under lite-signal's 1024 cap.
         function scoped() {
             const mm = makeMockMM();

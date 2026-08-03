@@ -8,7 +8,7 @@ import {
 } from "../Media.js";
 
 // ---------------------------------------------------------------------------
-// makeMock — reusable MQL factory
+// makeMock -- reusable MQL factory
 // ---------------------------------------------------------------------------
 // Simulates the DOM's MediaQueryList: one entry per query, `flip()` mutates
 // and dispatches to registered `change` listeners. `setInitial()` primes the
@@ -55,7 +55,7 @@ function makeMock() {
 describe("media()", () => {
     beforeEach(() => __resetForTests());
 
-    test("memoizes by query string — same string returns same signal", () => {
+    test("memoizes by query string -- same string returns same signal", () => {
         const mock = makeMock();
         configure({ matchMedia: mock.matchMedia });
         const a = media("(max-width: 600px)");
@@ -104,7 +104,7 @@ describe("media()", () => {
         assert.strictEqual(last, true);
         assert.strictEqual(runs, 2);
 
-        // Redundant flip — same value dispatched twice. lite-signal drops it via
+        // Redundant flip -- same value dispatched twice. lite-signal drops it via
         // Object.is; effect must NOT re-run.
         mock.flip("(max-width: 600px)", true);
         assert.strictEqual(runs, 2);

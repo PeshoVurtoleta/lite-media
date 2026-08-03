@@ -5,7 +5,7 @@ import { media, configure, __resetForTests } from "../Media.js";
 
 const HAS_GC = typeof globalThis.gc === "function";
 
-// Inline mock — identical shape to test/01, kept local so each file is
+// Inline mock -- identical shape to test/01, kept local so each file is
 // self-contained (Node's --test runs each file in its own subprocess by
 // default; cross-file isolation is free, but each file should read cleanly on
 // its own).
@@ -37,7 +37,7 @@ function makeMock() {
     return { matchMedia, flip };
 }
 
-describe("zero-GC — heap-delta guard", () => {
+describe("zero-GC -- heap-delta guard", () => {
     beforeEach(() => __resetForTests());
 
     // The core steady-state claim: after all signals are materialized and all
@@ -104,13 +104,13 @@ describe("zero-GC — heap-delta guard", () => {
     );
 });
 
-describe("zero-GC — no timers scheduled", () => {
+describe("zero-GC -- no timers scheduled", () => {
     beforeEach(() => __resetForTests());
 
     // Grep-adjacent guard: the pasted proposal we rejected in the roadmap used
     // setTimeout for debouncing. lite-media must not touch timers on any code
     // path exercised here. Wrapping setTimeout/setInterval with a counter is
-    // enough — if anything sneaks in, the test fails loud.
+    // enough -- if anything sneaks in, the test fails loud.
     test("flip storm never calls setTimeout / setInterval", () => {
         const mock = makeMock();
         configure({ matchMedia: mock.matchMedia });

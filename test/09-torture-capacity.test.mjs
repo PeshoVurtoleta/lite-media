@@ -13,12 +13,12 @@ function makeMockMM() {
     };
 }
 
-describe("torture · capacity — overflow surfaces cleanly", () => {
+describe("torture - capacity -- overflow surfaces cleanly", () => {
     test("creating past lite-signal's node cap throws a named CapacityError", () => {
         __resetForTests();
         configure({ matchMedia: makeMockMM().matchMedia });
         assert.throws(() => {
-            // Push well past 1024 — will throw at ~1024, not silently corrupt.
+            // Push well past 1024 -- will throw at ~1024, not silently corrupt.
             for (let i = 0; i < 2000; i++) media(`(overflow: ${i}px)`);
         }, (err) => {
             // Message should mention capacity in some form. We don't hard-

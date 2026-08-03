@@ -4,7 +4,7 @@ import { effect } from "@zakkster/lite-signal";
 import { createMedia, __browserEngineForTests } from "../Media.js";
 
 // ===========================================================================
-// Realm / DOM mock harness — browserless exercise of the browser engine.
+// Realm / DOM mock harness -- browserless exercise of the browser engine.
 // ===========================================================================
 // detectDefaultContainerEngine() gates on globalThis.document (an object with
 // createElement), globalThis.CSSStyleSheet (a function), and "adoptedStyleSheets"
@@ -12,7 +12,7 @@ import { createMedia, __browserEngineForTests } from "../Media.js";
 // scoped createMedia() with no engine resolves to the real makeBrowserContainer-
 // Engine. __browserEngineForTests() returns a fresh engine directly for the
 // watch/dispose-level assertions that need the disposer (there is no public
-// container-dispose API — the same @internal-seam pattern as __flipForTests).
+// container-dispose API -- the same @internal-seam pattern as __flipForTests).
 
 // One shared counter: every constructed sheet bumps it, so "one sheet per root"
 // is a single number to assert.
@@ -77,7 +77,7 @@ function makeSentinel(doc) {
 
 // A realm: its own window (with its own CSSStyleSheet ctor + getComputedStyle)
 // and document. The hostile variant's adoptedStyleSheets setter throws unless
-// every adopted member is instanceof this realm's Sheet — the cross-realm guard.
+// every adopted member is instanceof this realm's Sheet -- the cross-realm guard.
 function makeRealm(hostile) {
     const Sheet = makeSheetClass();
     const win = { CSSStyleSheet: Sheet, getComputedStyle: computedFor };
@@ -172,9 +172,9 @@ function hasContainerRule(sheet, query) {
 }
 
 // ===========================================================================
-// DOCUMENT-root assertions (regression floor — pass on the unmodified engine).
+// DOCUMENT-root assertions (regression floor -- pass on the unmodified engine).
 // ===========================================================================
-describe("browser engine — document root (regression floor)", () => {
+describe("browser engine -- document root (regression floor)", () => {
     beforeEach(() => { constructions = 0; installEnv(makeRealm(false)); });
     afterEach(() => restoreEnv());
 
@@ -245,7 +245,7 @@ describe("browser engine — document root (regression floor)", () => {
 // ===========================================================================
 // SHADOW-root: the multi-root fix. Sheet lands in the shadow root, not the doc.
 // ===========================================================================
-describe("browser engine — shadow root", () => {
+describe("browser engine -- shadow root", () => {
     let realm;
     beforeEach(() => { constructions = 0; realm = makeRealm(false); installEnv(realm); });
     afterEach(() => restoreEnv());
@@ -259,7 +259,7 @@ describe("browser engine — shadow root", () => {
         assert.strictEqual(initial, false);
         // Load-bearing control: the pre-1.4.0 engine adopted into the document.
         // If that regressed, `doc` would hold the sheet and `shadow` would be
-        // empty — both assertions below would fail.
+        // empty -- both assertions below would fail.
         assert.strictEqual(doc.adoptedStyleSheets.length, 0, "document NOT touched");
         assert.strictEqual(shadow.adoptedStyleSheets.length, 1, "sheet in the shadow root");
         const sheet = shadow.adoptedStyleSheets[0];
@@ -287,7 +287,7 @@ describe("browser engine — shadow root", () => {
 // ===========================================================================
 // CROSS-realm / iframe: the sheet is built in the ROOT's own realm.
 // ===========================================================================
-describe("browser engine — cross-realm / iframe", () => {
+describe("browser engine -- cross-realm / iframe", () => {
     let mainRealm;
     beforeEach(() => { constructions = 0; mainRealm = makeRealm(false); installEnv(mainRealm); });
     afterEach(() => restoreEnv());
@@ -333,7 +333,7 @@ describe("browser engine — cross-realm / iframe", () => {
 // ===========================================================================
 // Invariants across N roots: one property, one sheet per root, shared ids.
 // ===========================================================================
-describe("browser engine — invariants across N roots", () => {
+describe("browser engine -- invariants across N roots", () => {
     let realm;
     beforeEach(() => { constructions = 0; realm = makeRealm(false); installEnv(realm); });
     afterEach(() => restoreEnv());

@@ -7,7 +7,7 @@ import { media, configure, __resetForTests } from "../Media.js";
 // jsdom-injecting harnesses might. Detect and skip.
 const HAS_NATIVE_MATCH_MEDIA = typeof globalThis.matchMedia === "function";
 
-describe("configure() — input handling", () => {
+describe("configure() -- input handling", () => {
     beforeEach(() => __resetForTests());
 
     test("null / undefined args are safe no-ops", () => {
@@ -28,7 +28,7 @@ describe("configure() — input handling", () => {
 
     test("non-function matchMedia throws TypeError with a helpful message", () => {
         // A misspelled import (`someMisspelledImport`) is the failure mode
-        // this catches — silently dropping it would surface later as
+        // this catches -- silently dropping it would surface later as
         // "no matchMedia available," which points the developer nowhere.
         assert.throws(
             () => configure({ matchMedia: "not-a-function" }),
@@ -53,7 +53,7 @@ describe("configure() — input handling", () => {
     test("configure({ ssrDefault: 'truthy' }) is a no-op (non-boolean rejected quietly)", () => {
         // The public contract is boolean; anything else is ignored. This
         // matches the spirit of "later calls override only the keys they
-        // set" — a non-boolean isn't a legitimate set.
+        // set" -- a non-boolean isn't a legitimate set.
         configure({ ssrDefault: "yes" });
         if (!HAS_NATIVE_MATCH_MEDIA) {
             assert.throws(() => media("(any)"), /no matchMedia/i);
@@ -61,21 +61,21 @@ describe("configure() — input handling", () => {
     });
 });
 
-describe("configure() — SSR default", () => {
+describe("configure() -- SSR default", () => {
     beforeEach(() => __resetForTests());
 
-    test("ssrDefault: true — signals return true when no matchMedia", () => {
+    test("ssrDefault: true -- signals return true when no matchMedia", () => {
         configure({ ssrDefault: true });
         assert.strictEqual(media("(any)")(), true);
     });
 
-    test("ssrDefault: false — signals return false when no matchMedia", () => {
+    test("ssrDefault: false -- signals return false when no matchMedia", () => {
         configure({ ssrDefault: false });
         assert.strictEqual(media("(any)")(), false);
     });
 
     test(
-        "no config + no native matchMedia → media() throws with a helpful message",
+        "no config + no native matchMedia -> media() throws with a helpful message",
         { skip: HAS_NATIVE_MATCH_MEDIA },
         () => {
             assert.throws(
@@ -87,7 +87,7 @@ describe("configure() — SSR default", () => {
     );
 
     test(
-        "failed materialization does NOT lock — configure() and retry works",
+        "failed materialization does NOT lock -- configure() and retry works",
         { skip: HAS_NATIVE_MATCH_MEDIA },
         () => {
             // This is the specific bug the v1.0.0 review caught: a stray
@@ -100,12 +100,12 @@ describe("configure() — SSR default", () => {
     );
 });
 
-describe("configure() — lock semantics", () => {
+describe("configure() -- lock semantics", () => {
     beforeEach(() => __resetForTests());
 
     test("reconfigure after successful materialization throws", () => {
         configure({ ssrDefault: false });
-        media("(any)"); // successful materialization → lock engages
+        media("(any)"); // successful materialization -> lock engages
         assert.throws(
             () => configure({ ssrDefault: true }),
             /before the first successful media/i
@@ -128,7 +128,7 @@ describe("configure() — lock semantics", () => {
     });
 });
 
-describe("configure() — matchMedia factory contract", () => {
+describe("configure() -- matchMedia factory contract", () => {
     beforeEach(() => __resetForTests());
 
     test("factory called with the query string", () => {

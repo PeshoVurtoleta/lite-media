@@ -34,7 +34,7 @@ Measured on **Apple M4 Pro (12 cores) · Node 26.3.1 · darwin/arm64**. Run `npm
 | Cold materialize (mock MQL, cache miss)           | 1.6 M ops/s       | 624 ns        |
 | `createMedia()` + 5 signals fully wired           | 674 K ops/s       | 1.48 μs       |
 
-**~3.2 KB min+gz** (3,265 B, esbuild + `gzip -9`, lite-signal external) for the full module — Engine A, Engine B (`containerMedia` + `containerStyle`, multi-root as of v1.4.0), `breakpoints`, `createMedia`, 10 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
+**~3.5 KB min+gz** (3,529 B, esbuild + `gzip -9`, lite-signal external) for the full module — Engine A, Engine B (`containerMedia` + `containerStyle`, multi-root as of v1.4.0, bfcache-aware as of v1.4.1), `breakpoints`, `createMedia`, 10 preferences, `configure`, `stats`. The dev-only `container-type` warning is behind a `process.env.NODE_ENV !== "production"` guard, so a production build drops it.
 
 ## Hello
 
@@ -67,6 +67,8 @@ Two consequences that fall out of that:
 2. **Zero-GC steady state.** A `change` event runs one hoisted handler that does one `sig.set(e.matches)`. lite-signal's default `Object.is` equality drops redundant events. No timers, no debounce, no allocations after the signal is created.
 
 Engine B (`containerMedia`, v1.1) follows the same rule via CSS custom-property transitions on a zero-size sentinel — the browser fires `transitionrun` when a container's verdict flips, and lite-media pushes the new boolean into the signal graph. `containerStyle` (v1.3) is the same engine pointed at a `style()` condition instead of a size one: still no parser, still one observed verdict.
+
+**bfcache is the one case the browser doesn't tell you about (v1.4.1).** A page restored from the back/forward cache does *not* re-fire `change` or `transitionrun`, so a signal could hold an answer that went stale while the page was frozen (the user flipped dark mode, rotated the device, resized the window). Each instance lazily attaches **one** `pageshow` listener; on a *persisted* restore (`event.persisted === true`) — and only then — it re-reads every watched `mql.matches` and every live sentinel's verdict and re-pushes each through the same `sig.set`. `Object.is` drops the ones that didn't move, so an unchanged restore retains **0 B** and runs no effects, while a verdict that changed while frozen propagates exactly once. Every read is fail-closed; in Node / SSR (no `globalThis.addEventListener`) nothing is attached. No application code to call — it just stops being stale.
 
 ---
 
@@ -320,9 +322,11 @@ Or use `createMedia({ containerEngine: mockEngine })` for tests that shouldn't t
 | `transitionrun` event → sig.set          | 0 hot-path (getComputedStyle read is cached)      |
 | Redundant event (same value)             | 0 (Object.is dedup in lite-signal)                |
 | Preference shortcut call                 | 0 additional (delegates to `media()`)             |
-| `createMedia(opts)` call                 | 1 instance object + 1 Map + 1 WeakMap             |
+| bfcache restore — unchanged verdict      | 0 retained (each `sig.set` dedups via `Object.is`)|
+| bfcache restore — changed verdict        | 0 additional (one `sig.set` per moved verdict)    |
+| `createMedia(opts)` call                 | 1 instance object + 2 Maps + 1 WeakMap            |
 
-Cost scales with **verdict flips**, not with browser events: an event that doesn't move the answer costs one `Object.is` comparison and stops.
+Cost scales with **verdict flips**, not with browser events: an event that doesn't move the answer costs one `Object.is` comparison and stops. A bfcache restore (a persisted `pageshow`) re-reads every watched verdict once and pushes only the ones that actually moved while the page was frozen — an unchanged restore retains 0 B.
 
 ---
 
@@ -333,8 +337,8 @@ Cost scales with **verdict flips**, not with browser events: an event that doesn
 - **v1.1.2** — Dev-only `container-type: normal` warning; SSR container contract + registry-bounds invariant pinned; `test/torture.mjs` proof gate (0 B/flip, 0 ArrayBuffer growth committed as numbers).
 - **v1.2.0** — `breakpoints({ sm, md, lg })` interned-token band computed (0 B/band-change committed); `standaloneDisplay()` + `highDynamicRange()` complete the ten preference signals.
 - **v1.3.0** — `containerStyle(el, prop, value)` — Engine B's `@container style()` class through the same sentinel primitive (0 B/flip committed); the `container-type` footgun warning now skips `style()` queries (LM-04).
-- **v1.4.0** — Multi-root Engine B: shadow DOM + cross-realm iframe (one constructed sheet per root, adopted into that root, built in that root's realm); one `--lm-v` across roots, fail-closed per root, interleaved-dispose torture committed. *This release.*
-- **v1.4.1** — bfcache / `pagehide` lifecycle audit (a pinned answer per event).
+- **v1.4.0** — Multi-root Engine B: shadow DOM + cross-realm iframe (one constructed sheet per root, adopted into that root, built in that root's realm); one `--lm-v` across roots, fail-closed per root, interleaved-dispose torture committed.
+- **v1.4.1** — bfcache / `pageshow` lifecycle audit: a persisted `pageshow` re-pins every Engine A `mql` verdict and every Engine B sentinel verdict through the same `sig.set` a real event uses. 0 B on an unchanged restore, fail-closed per entry; bfcache resync + live-set retention torture committed. *This release.*
 - **v1.5.0** — Ecosystem wiring: `lite-ambient-fx` & `lite-scratch-fx` consume `reducedMotion` via `watchEffect` rAF gate; `lite-hueforge` pairs `moreContrast` / `forcedColors` with APCA role-floor selection.
 
 Watchlist: [CSSWG #6205](https://github.com/w3c/csswg-drafts/issues/6205) — a native `Element.matchContainer()` would collapse Engine B to a feature-detected bridge without changing the signal-graph surface.
