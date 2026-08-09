@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.1 — hardening: mechanical source-ASCII gate
+
+**Runtime identical to 1.5.0.** Hardening-only patch. No public API change, no new export, no change to the shipped runtime — the only edit to `Media.js` is its version-header comment (stripped by minify), so the **minified bundle is byte-identical to 1.5.0 at 3,529 B** min+gz. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.
+
+### Tests + torture
+
+- New `test/21-ascii.test.mjs` (4 tests): mechanizes the source-only ASCII Law. A pure `scanAscii(text, file)` flags every codepoint > U+007F except the two allowed exceptions (U+00D7, U+00B5), reporting 1-based `line`/`col` and `U+XXXX`. The gate scans the real source set — `Media.js`, `Media.d.ts`, every `test/*.mjs`, every `bench/*.mjs` (selected by extension, so `torture.mjs` and the gate file itself are covered) — and asserts zero findings; docs (`.md`/`.txt`/`.html`) and `demo/**` are outside the Law and not scanned. A **failing control** feeds an em-dash (U+2014) and asserts exactly one finding at the correct location, proving the gate bites; a third test confirms U+00D7 and U+00B5 produce zero findings; a fourth confirms neighboring codepoints (U+00B4/U+00B6 around micro, U+00D6/U+00D8 around the multiplication sign) are still flagged, guarding the exception list against range-widening.
+
+### Notes
+
+- The only change to `Media.js` is its version-header comment (`v1.5.0` -> `v1.5.1`), keeping the version in sync across `package.json`, `Media.js`, and `Media.d.ts` per the packaging convention. The comment is stripped by minification, so the runtime is unchanged and the min+gz bundle is byte-identical to 1.5.0.
+
 ## 1.5.0 — ecosystem wiring (Option A): reduced-motion rAF-gate recipe
 
 **Runtime identical to 1.4.1.** This release ships the reduced-motion rAF-gate recipe, its conformance + torture gates, the vendor-vs-depend decision record, and a demo scene. No new public API, no new export, no change to the shipped runtime — the only edit to `Media.js` is its version-header comment (stripped by minify), so the **minified bundle is byte-identical to 1.4.1 at 3,529 B** min+gz. Peer dependency stays `@zakkster/lite-signal ^1.3.0`.

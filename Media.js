@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-media v1.5.0
+ * @zakkster/lite-media v1.5.1
  *
  * Reactive media & preference signals. v1.1.0 adds:
  *   - createMedia({ matchMedia, ssrDefault, containerEngine }) -- scoped

@@ -30,6 +30,10 @@
 > it ships a tested, copy-pasteable reduced-motion rAF-gate recipe for consumers
 > already in the signal graph (reducedMotion() + effect({ scheduler })), its
 > conformance + torture gates, and the vendor-vs-depend decision record.
+> v1.5.1 is hardening only: a mechanical source-ASCII gate (test/21-ascii.test.mjs)
+> that fails on any non-ASCII source codepoint except the two allowed exceptions
+> (U+00D7, U+00B5). Media.js runtime unchanged from 1.5.0 (sole edit is the
+> version-header comment; min+gz bundle byte-identical).
 
 ## Design in one line
 
@@ -68,7 +72,7 @@ media, container AND style paths, 0 B per breakpoints band change, 0 B per
 stable-band read, 0 ArrayBuffer growth, 0 major GC across a 100-signal x
 2000-toggle storm. Every gate ships a control that fails it.
 
-## Public API (v1.5.0)
+## Public API (v1.5.1)
 
     import { signal, effect } from "@zakkster/lite-signal";
     import {
@@ -443,7 +447,10 @@ Not a runtime error, just graceful degradation.
           and the vendor-vs-depend decision record. Media.js runtime is unchanged
           from 1.4.1 (min+gz bundle byte-identical); lite-ambient-fx / lite-scratch-fx KEEP vendoring
           their own prefers-reduced-motion check (zero-dep identity); lite-media
-          does not become their runtime dependency. [current]
+          does not become their runtime dependency.
+- 1.5.1 — Hardening only (NOT a new rung): a mechanical source-ASCII gate
+          (test/21-ascii.test.mjs) with a failing control. No runtime change;
+          min+gz bundle byte-identical to 1.5.0. [current]
 
 Watchlist: CSSWG #6205 (native Element.matchContainer). If it ships, engine
 B collapses to a feature-detected bridge with unchanged signal-graph surface.
@@ -452,7 +459,7 @@ B collapses to a feature-detected bridge with unchanged signal-graph surface.
 
     Media.js       — single-file ESM implementation (~1032 lines)
     Media.d.ts     — TypeScript declarations
-    test/01…20-*.test.mjs      — 205 tests across 20 files
+    test/01…21-*.test.mjs      — 209 tests across 21 files
     test/torture.mjs — the proof gate (node --expose-gc): committed 0-B numbers,
                       incl. the v1.5.0 reduced-motion rAF-gate tiers
     bench/bench.mjs — machine-stamped benchmark harness

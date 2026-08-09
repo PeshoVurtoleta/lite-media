@@ -298,6 +298,8 @@ configure({ containerEngine: mockEngine });
 
 Or use `createMedia({ containerEngine: mockEngine })` for tests that shouldn't touch module state.
 
+**209 tests across 21 files** (`npm test`), plus `test/torture.mjs` (`npm run test:torture`). A mechanical ASCII gate (`test/21-ascii.test.mjs`) fails on any non-ASCII source codepoint except the two allowed exceptions (U+00D7, U+00B5), with a failing control proving it bites.
+
 ---
 
 ## Zero-GC accounting
@@ -389,7 +391,8 @@ In short: depend on lite-media when you are already reactive; vendor a one-line 
 - **v1.3.0** — `containerStyle(el, prop, value)` — Engine B's `@container style()` class through the same sentinel primitive (0 B/flip committed); the `container-type` footgun warning now skips `style()` queries (LM-04).
 - **v1.4.0** — Multi-root Engine B: shadow DOM + cross-realm iframe (one constructed sheet per root, adopted into that root, built in that root's realm); one `--lm-v` across roots, fail-closed per root, interleaved-dispose torture committed.
 - **v1.4.1** — bfcache / `pageshow` lifecycle audit: a persisted `pageshow` re-pins every Engine A `mql` verdict and every Engine B sentinel verdict through the same `sig.set` a real event uses. 0 B on an unchanged restore, fail-closed per entry; bfcache resync + live-set retention torture committed.
-- **v1.5.0** — Ecosystem wiring (Option A): a tested, copy-pasteable **reduced-motion rAF-gate** recipe for consumers already in the signal graph (`reducedMotion()` + `effect({ scheduler })`), its conformance + torture gates (0 B/flip, 0 major GC, 0 frames while parked, live-set 0), and the vendor-vs-depend decision record. **Media.js runtime is unchanged from 1.4.1** (only the version-header comment changed; min+gz bundle byte-identical). *This release.*
+- **v1.5.0** — Ecosystem wiring (Option A): a tested, copy-pasteable **reduced-motion rAF-gate** recipe for consumers already in the signal graph (`reducedMotion()` + `effect({ scheduler })`), its conformance + torture gates (0 B/flip, 0 major GC, 0 frames while parked, live-set 0), and the vendor-vs-depend decision record. **Media.js runtime is unchanged from 1.4.1** (only the version-header comment changed; min+gz bundle byte-identical).
+- **v1.5.1** — Hardening only: a mechanical source-ASCII gate (`test/21-ascii.test.mjs`) with a failing control. No runtime change; min+gz bundle byte-identical to 1.5.0 (only the version-header comment changed). *This release.*
 
 Watchlist: [CSSWG #6205](https://github.com/w3c/csswg-drafts/issues/6205) — a native `Element.matchContainer()` would collapse Engine B to a feature-detected bridge without changing the signal-graph surface.
 
